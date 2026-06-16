@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Escuela de Kung Fu</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1>🥋 Panel de Administración</h1>
+                <p class="subtitle">Gestión de Base de Datos - Escuela de Kung Fu</p>
+            </div>
+        </header>
+
+        <nav class="navbar">
+            <div class="nav-content">
+                <button class="nav-btn active" data-section="dashboard">Dashboard</button>
+                <button class="nav-btn" data-section="tables">Tablas</button>
+                <button class="nav-btn" data-section="migrate">Migraciones</button>
+                <button class="nav-btn" data-section="settings">Configuración</button>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <!-- Dashboard Section -->
+            <section id="dashboard-section" class="section active">
+                <div class="section-header">
+                    <h2>Dashboard</h2>
+                </div>
+
+                <div class="dashboard-grid">
+                    <div class="card card-status">
+                        <div class="card-header">Estado de la Base de Datos</div>
+                        <div class="card-body">
+                            <div class="status-indicator" id="status-indicator">
+                                <span class="status-dot" id="status-dot"></span>
+                                <span id="status-text">Conectando...</span>
+                            </div>
+                            <div class="status-details">
+                                <p><strong>Hora del servidor:</strong> <span id="db-time">--</span></p>
+                                <p><strong>Última verificación:</strong> <span id="check-time">--</span></p>
+                            </div>
+                            <button class="btn btn-primary" id="check-health-btn">Verificar Estado</button>
+                        </div>
+                    </div>
+
+                    <div class="card card-tables">
+                        <div class="card-header">Estadísticas</div>
+                        <div class="card-body">
+                            <div class="stat-item">
+                                <span class="stat-label">Tablas en Base de Datos:</span>
+                                <span class="stat-value" id="table-count">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-label">Última Migración:</span>
+                                <span class="stat-value" id="last-migration">Sin info</span>
+                            </div>
+                            <button class="btn btn-secondary" id="refresh-stats-btn">Actualizar</button>
+                        </div>
+                    </div>
+
+                    <div class="card card-actions">
+                        <div class="card-header">Acciones Rápidas</div>
+                        <div class="card-body">
+                            <button class="btn btn-info" id="view-tables-btn">Ver Tablas</button>
+                            <button class="btn btn-warning" id="run-migrate-btn">Ejecutar Migraciones</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tables Section -->
+            <section id="tables-section" class="section">
+                <div class="section-header">
+                    <h2>Tablas de la Base de Datos</h2>
+                    <button class="btn btn-secondary" id="reload-tables-btn">Recargar</button>
+                </div>
+
+                <div class="loading" id="tables-loading" style="display: none;">
+                    <span class="spinner"></span>
+                    Cargando tablas...
+                </div>
+
+                <div class="tables-container">
+                    <table class="data-table" id="tables-table" style="display: none;">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Nombre de Tabla</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tables-tbody">
+                        </tbody>
+                    </table>
+
+                    <div class="empty-state" id="tables-empty">
+                        <p>No hay tablas disponibles</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Migrations Section -->
+            <section id="migrate-section" class="section">
+                <div class="section-header">
+                    <h2>Gestión de Migraciones</h2>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">Ejecutar Migraciones</div>
+                    <div class="card-body">
+                        <p class="info-text">Las migraciones se ejecutarán automáticamente para actualizar el esquema de la base de datos.</p>
+                        <button class="btn btn-success btn-large" id="execute-migrate-btn">Ejecutar Migraciones</button>
+                    </div>
+                </div>
+
+                <div class="card" id="migration-results" style="display: none;">
+                    <div class="card-header">Resultados de la Migración</div>
+                    <div class="card-body">
+                        <div class="migration-info">
+                            <div class="info-row">
+                                <span class="label">Migraciones Ejecutadas:</span>
+                                <span class="value" id="migrations-executed">0</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Versión Inicial:</span>
+                                <span class="value" id="initial-version">--</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Versión Target:</span>
+                                <span class="value" id="target-version">--</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Base de Datos:</span>
+                                <span class="value" id="migration-db">--</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="label">Versión de Flyway:</span>
+                                <span class="value" id="flyway-version">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Section -->
+            <section id="settings-section" class="section">
+                <div class="section-header">
+                    <h2>Configuración</h2>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">Configuración del Backend</div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label for="api-url">URL del API Backend:</label>
+                            <input type="text" id="api-url" class="form-input" placeholder="http://localhost:8080">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox" id="auto-refresh" checked>
+                                Actualizar estado automáticamente
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label for="refresh-interval">Intervalo de actualización (segundos):</label>
+                            <input type="number" id="refresh-interval" class="form-input" value="30" min="5" max="300">
+                        </div>
+                        <button class="btn btn-primary" id="save-settings-btn">Guardar Configuración</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">Acerca de</div>
+                    <div class="card-body">
+                        <p><strong>Aplicación:</strong> Panel de Administración de Base de Datos</p>
+                        <p><strong>Versión:</strong> 1.0.0</p>
+                        <p><strong>Sistema:</strong> Escuela de Kung Fu</p>
+                        <p class="info-text">Para soporte técnico, contacte al administrador del sistema.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2026 Escuela de Kung Fu. Todos los derechos reservados.</p>
+        </footer>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
