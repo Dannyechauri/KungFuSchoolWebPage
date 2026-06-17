@@ -4,10 +4,12 @@ const DEFAULT_REFRESH_INTERVAL = 30; // segundos
 
 // Estado de la aplicación
 const appState = {
-    apiUrl: localStorage.getItem('apiUrl') || DEFAULT_API_URL,
+    apiUrl: normalizeApiUrl(localStorage.getItem('apiUrl')) || DEFAULT_API_URL,
     autoRefresh: localStorage.getItem('autoRefresh') !== 'false',
-    refreshInterval: parseInt(localStorage.getItem('refreshInterval') || DEFAULT_REFRESH_INTERVAL),
-    refreshInterval: null,
+    refreshIntervalSeconds: parseInt(localStorage.getItem('refreshInterval') || DEFAULT_REFRESH_INTERVAL),
+    refreshTimerId: null,
+    selectedTable: null,
+    selectedColumns: [],
 };
 
 // ==================== Inicialización ==================== 
@@ -37,6 +39,8 @@ function setupEventListeners() {
 
     // Tables
     document.getElementById('reload-tables-btn').addEventListener('click', loadTables);
+    document.getElementById('reload-selected-table-btn').addEventListener('click', reloadSelectedTableData);
+    document.getElementById('insert-row-btn').addEventListener('click', insertSelectedTableRow);
 
     // Migrations
     document.getElementById('execute-migrate-btn').addEventListener('click', executeMigrations);
@@ -86,7 +90,8 @@ function switchSection(sectionName) {
 
 // ==================== API Calls ==================== 
 async function apiCall(endpoint, options = {}) {
-    const url = `${appState.apiUrl}${endpoint}`;
+    const baseUrl = normalizeApiUrl(appState.apiUrl) || DEFAULT_API_URL;
+    const url = `${baseUrl}${endpoint}`;
     const defaultOptions = {
         headers: {
             'Content-Type': 'application/json',
@@ -184,7 +189,7 @@ async function loadTables() {
                 <td>${index + 1}</td>
                 <td><strong>${tableName}</strong></td>
                 <td>
-                    <button class="btn btn-info btn-sm" onclick="viewTableInfo('${tableName}')">Ver Info</button>
+                    <button class="btn btn-info btn-sm" onclick="openTableData('${tableName}')">Ver Datos</button>
                 </td>
             `;
             tbody.appendChild(row);
@@ -200,9 +205,161 @@ async function loadTables() {
     }
 }
 
-function viewTableInfo(tableName) {
-    showToast(`Información de tabla: ${tableName}`, 'info');
-    // Aquí se podría expandir para mostrar más información sobre la tabla
+async function openTableData(tableName) {
+    try {
+        appState.selectedTable = tableName;
+        document.getElementById('table-data-panel').style.display = 'block';
+        document.getElementById('selected-table-name').textContent = tableName;
+
+        const columns = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/columns`);
+        appState.selectedColumns = columns;
+        renderInsertForm(columns);
+        await reloadSelectedTableData();
+        showToast(`Tabla seleccionada: ${tableName}`, 'success');
+    } catch (error) {
+        showToast(`No se pudo abrir la tabla ${tableName}`, 'error');
+    }
+}
+
+async function reloadSelectedTableData() {
+    if (!appState.selectedTable) {
+        showToast('Selecciona una tabla primero', 'info');
+        return;
+    }
+
+    try {
+        const tableName = appState.selectedTable;
+        const rows = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows?limit=100`);
+        renderTableData(rows, appState.selectedColumns);
+    } catch (error) {
+        showToast('No se pudieron cargar los registros', 'error');
+    }
+}
+
+function renderTableData(rows, columns) {
+    const head = document.getElementById('table-data-head');
+    const body = document.getElementById('table-data-body');
+    const empty = document.getElementById('table-data-empty');
+    const table = document.getElementById('table-data-table');
+    const primaryKeyColumn = columns.find(col => col.primaryKey)?.name;
+
+    if (rows.length === 0) {
+        table.style.display = 'none';
+        empty.style.display = 'block';
+        body.innerHTML = '';
+        return;
+    }
+
+    empty.style.display = 'none';
+    table.style.display = 'table';
+
+    const columnNames = columns.map(col => col.name);
+    head.innerHTML = `
+        <tr>
+            ${columnNames.map(name => `<th>${name}</th>`).join('')}
+            <th>Acciones</th>
+        </tr>
+    `;
+
+    body.innerHTML = rows.map(row => {
+        const actionBtn = primaryKeyColumn && row[primaryKeyColumn] !== undefined
+            ? `<button class="btn btn-danger btn-sm" onclick="deleteRow('${appState.selectedTable}', '${String(row[primaryKeyColumn]).replace(/'/g, "\\'")}')">Eliminar</button>`
+            : '<span class="text-muted">Sin PK</span>';
+
+        return `
+            <tr>
+                ${columnNames.map(name => `<td>${formatCellValue(row[name])}</td>`).join('')}
+                <td>${actionBtn}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderInsertForm(columns) {
+    const form = document.getElementById('insert-row-form');
+    const editableColumns = columns.filter(col => !col.autoGenerated);
+
+    if (editableColumns.length === 0) {
+        form.innerHTML = '<p class="info-text">No hay columnas editables para insertar en esta tabla.</p>';
+        return;
+    }
+
+    form.innerHTML = editableColumns.map(col => `
+        <div class="form-group">
+            <label for="field-${col.name}">${col.name} (${col.dataType})${col.nullable ? '' : ' *'}</label>
+            <input type="text" id="field-${col.name}" class="form-input" data-column="${col.name}" placeholder="Valor para ${col.name}">
+        </div>
+    `).join('');
+}
+
+async function insertSelectedTableRow() {
+    if (!appState.selectedTable) {
+        showToast('Selecciona una tabla primero', 'info');
+        return;
+    }
+
+    const form = document.getElementById('insert-row-form');
+    const payload = {};
+    const editableColumns = appState.selectedColumns.filter(col => !col.autoGenerated);
+
+    editableColumns.forEach(col => {
+        const input = form.querySelector(`[data-column="${col.name}"]`);
+        const rawValue = input?.value?.trim();
+
+        if (rawValue === '' || rawValue === undefined) {
+            if (!col.nullable) {
+                payload[col.name] = null;
+            }
+            return;
+        }
+
+        if (rawValue.toLowerCase() === 'null') {
+            payload[col.name] = null;
+            return;
+        }
+
+        if (rawValue.toLowerCase() === 'true' || rawValue.toLowerCase() === 'false') {
+            payload[col.name] = rawValue.toLowerCase() === 'true';
+            return;
+        }
+
+        const numericValue = Number(rawValue);
+        if (!Number.isNaN(numericValue) && rawValue !== '') {
+            payload[col.name] = numericValue;
+            return;
+        }
+
+        payload[col.name] = rawValue;
+    });
+
+    try {
+        await apiCall(`/api/database/tables/${encodeURIComponent(appState.selectedTable)}/rows`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+
+        form.reset();
+        await reloadSelectedTableData();
+        showToast('Registro agregado correctamente', 'success');
+    } catch (error) {
+        showToast('No se pudo agregar el registro', 'error');
+    }
+}
+
+async function deleteRow(tableName, id) {
+    if (!confirm(`¿Eliminar el registro ${id} de ${tableName}?`)) {
+        return;
+    }
+
+    try {
+        await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows/${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+        });
+        await reloadSelectedTableData();
+        showToast('Registro eliminado', 'success');
+    } catch (error) {
+        showToast('No se pudo eliminar el registro', 'error');
+    }
 }
 
 // ==================== Migraciones ==================== 
@@ -242,18 +399,29 @@ function displayMigrationResults(result) {
 
 // ==================== Configuración ==================== 
 function loadSettings() {
-    document.getElementById('api-url').value = appState.apiUrl;
+    document.getElementById('api-url').value = normalizeApiUrl(appState.apiUrl) || DEFAULT_API_URL;
     document.getElementById('auto-refresh').checked = appState.autoRefresh;
-    document.getElementById('refresh-interval').value = appState.refreshInterval;
+    document.getElementById('refresh-interval').value = appState.refreshIntervalSeconds;
 }
 
 function saveSettings() {
-    const apiUrl = document.getElementById('api-url').value.trim();
+    const apiUrl = normalizeApiUrl(document.getElementById('api-url').value.trim());
     const autoRefresh = document.getElementById('auto-refresh').checked;
     const refreshInterval = parseInt(document.getElementById('refresh-interval').value);
 
     if (!apiUrl) {
         showToast('Por favor, ingrese una URL válida', 'error');
+        return;
+    }
+
+    try {
+        // Validar formato y esquema para evitar fallos silenciosos en fetch.
+        const parsedUrl = new URL(apiUrl);
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+            throw new Error('Protocolo inválido');
+        }
+    } catch (error) {
+        showToast('La URL del API no es válida', 'error');
         return;
     }
 
@@ -264,7 +432,7 @@ function saveSettings() {
 
     appState.apiUrl = apiUrl;
     appState.autoRefresh = autoRefresh;
-    appState.refreshInterval = refreshInterval;
+    appState.refreshIntervalSeconds = refreshInterval;
 
     localStorage.setItem('apiUrl', apiUrl);
     localStorage.setItem('autoRefresh', autoRefresh);
@@ -279,19 +447,33 @@ function saveSettings() {
 // ==================== Auto Refresh ==================== 
 function initializeAutoRefresh() {
     // Limpiar intervalo anterior si existe
-    if (appState.refreshInterval) {
-        clearInterval(appState.refreshInterval);
+    if (appState.refreshTimerId) {
+        clearInterval(appState.refreshTimerId);
     }
 
     if (appState.autoRefresh) {
-        appState.refreshInterval = setInterval(() => {
+        appState.refreshTimerId = setInterval(() => {
             const activeSection = document.querySelector('.section.active');
             if (activeSection.id === 'dashboard-section') {
                 checkHealthStatus();
                 loadDashboardStats();
             }
-        }, appState.refreshInterval * 1000);
+        }, appState.refreshIntervalSeconds * 1000);
     }
+}
+
+function formatCellValue(value) {
+    if (value === null || value === undefined) {
+        return '<span class="text-muted">NULL</span>';
+    }
+    return String(value);
+}
+
+function normalizeApiUrl(url) {
+    if (!url) {
+        return '';
+    }
+    return String(url).trim().replace(/\/+$/, '');
 }
 
 // ==================== Utilidades ==================== 
@@ -336,6 +518,15 @@ style.textContent = `
     .btn-sm {
         padding: 6px 12px;
         font-size: 0.85rem;
+    }
+
+    .btn-danger {
+        background-color: #c62828;
+        color: white;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+        background-color: #9e1f1f;
     }
 `;
 document.head.appendChild(style);

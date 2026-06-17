@@ -79,6 +79,33 @@
                     <button class="btn btn-secondary" id="reload-tables-btn">Recargar</button>
                 </div>
 
+                <div class="card" id="table-data-panel" style="display: none;">
+                    <div class="card-header">Explorador de Datos</div>
+                    <div class="card-body">
+                        <p class="info-text">
+                            Tabla seleccionada: <strong id="selected-table-name">--</strong>
+                        </p>
+                        <div class="table-data-actions">
+                            <button class="btn btn-secondary" id="reload-selected-table-btn">Recargar Datos</button>
+                        </div>
+
+                        <div class="table-data-wrapper">
+                            <table class="data-table" id="table-data-table">
+                                <thead id="table-data-head"></thead>
+                                <tbody id="table-data-body"></tbody>
+                            </table>
+                        </div>
+
+                        <div class="empty-state" id="table-data-empty" style="display: none;">
+                            <p>La tabla no tiene registros.</p>
+                        </div>
+
+                        <h3>Agregar registro</h3>
+                        <form id="insert-row-form" class="insert-form"></form>
+                        <button class="btn btn-success" id="insert-row-btn">Agregar Registro</button>
+                    </div>
+                </div>
+
                 <div class="loading" id="tables-loading" style="display: none;">
                     <span class="spinner"></span>
                     Cargando tablas...

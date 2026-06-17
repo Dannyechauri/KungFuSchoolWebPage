@@ -390,6 +390,25 @@ body {
     border-bottom: none;
 }
 
+.table-data-wrapper {
+    overflow-x: auto;
+    margin: 16px 0;
+}
+
+.table-data-actions {
+    margin-top: 12px;
+    margin-bottom: 12px;
+}
+
+.insert-form {
+    margin-top: 16px;
+}
+
+.text-muted {
+    color: var(--gray-500);
+    font-style: italic;
+}
+
 /* ==================== Forms ==================== */
 .form-group {
     margin-bottom: 20px;
