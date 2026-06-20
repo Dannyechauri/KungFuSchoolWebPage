@@ -436,6 +436,24 @@ body {
     box-shadow: 0 0 0 3px rgba(211, 47, 47, 0.1);
 }
 
+.form-group-checkbox {
+    margin-top: 4px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+    color: var(--gray-700);
+}
+
+.form-checkbox {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-color);
+}
+
 /* ==================== Loading y Empty States ==================== */
 .loading {
     display: flex;
