@@ -5,8 +5,8 @@ type PlaceholderPageProps = {
 
 export function PlaceholderPage({ title, description }: PlaceholderPageProps) {
   return (
-    <section>
-      <p className="page-kicker">Próximamente</p>
+    <section className="error-state">
+      <p className="page-kicker">Siguiente etapa</p>
       <h1>{title}</h1>
       <p className="page-description">{description}</p>
     </section>
