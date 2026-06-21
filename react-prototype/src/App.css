@@ -42,7 +42,6 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.brand-mark,
 .topbar-mark {
   display: grid;
   flex: 0 0 auto;
@@ -52,15 +51,10 @@
   border-radius: 50%;
 }
 
-.brand-mark {
+.brand-logo {
   width: 3.25rem;
   height: 3.25rem;
-  box-shadow: inset 0 0 0 4px var(--sidebar), inset 0 0 0 5px var(--gold);
-}
-
-.brand-mark span {
-  font-family: Georgia, serif;
-  font-size: 1.35rem;
+  object-fit: contain;
 }
 
 .brand p,

@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { API_URL } from '../config'
 
 const navigation = [
-  { to: '/', label: 'Inicio', marker: '01', end: true },
+  { to: '/', label: 'Panel', marker: '01', end: true },
   { to: '/alumnos', label: 'Alumnos', marker: '02' },
   { to: '/agenda', label: 'Agenda', marker: '03' },
   { to: '/conocimiento', label: 'Conocimiento', marker: '04' },
@@ -13,9 +13,11 @@ export function AppLayout() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            <span>武</span>
-          </div>
+          <img
+            className="brand-logo"
+            src="/logo-instituto-wushu.png"
+            alt="Escudo del Instituto de Wu-shu"
+          />
           <div>
             <p>Instituto de</p>
             <strong>Wu-shu</strong>

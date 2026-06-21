@@ -101,17 +101,17 @@ export function HomePage() {
     <div className="dashboard">
       <section className="dashboard-hero">
         <div>
-          <p className="page-kicker">Centro pionero desde 1976</p>
-          <h1>Conocimiento que se transmite, progreso que se ve.</h1>
+          <p className="page-kicker">Panel interno · Maestro y administración</p>
+          <h1>Gestión diaria de la escuela</h1>
           <p className="page-description">
-            Una vista clara de la escuela, sus alumnos y la tradición que cada
-            generación continúa construyendo.
+            Consulta alumnos, actividad docente, cursos y conocimiento técnico
+            desde un único lugar.
           </p>
         </div>
         <div className="status-card">
           <span className="status-dot" aria-hidden="true" />
           <div>
-            <strong>Sistema conectado</strong>
+            <strong>Servicios operativos</strong>
             <span>
               Actualizado {dateFormatter.format(new Date(dashboard.checkedAt))}
             </span>

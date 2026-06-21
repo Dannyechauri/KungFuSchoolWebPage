@@ -32,3 +32,14 @@ VITE_API_URL=http://localhost:8080
 npm run lint
 npm run build
 ```
+
+## Datos de demostración
+
+Con el backend en ejecución y una base local vacía (excepto los estilos iniciales):
+
+```bash
+npm run seed:demo
+```
+
+El script utiliza exclusivamente la API existente. Se detiene si encuentra datos
+de dominio para evitar duplicados accidentales.
