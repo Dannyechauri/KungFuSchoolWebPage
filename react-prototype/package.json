@@ -11,6 +11,9 @@
     "seed:demo": "node scripts/seed-demo.mjs"
   },
   "dependencies": {
+    "@fullcalendar/daygrid": "^6.1.21",
+    "@fullcalendar/list": "^6.1.21",
+    "@fullcalendar/react": "^6.1.21",
     "@tanstack/react-query": "^5.101.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

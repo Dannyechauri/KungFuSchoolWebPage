@@ -3,6 +3,7 @@ import { AppLayout } from './layouts/AppLayout'
 import { HomePage } from './pages/HomePage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { StudentsPage } from './pages/StudentsPage'
+import { StudentProfilePage } from './pages/StudentProfilePage'
 import './App.css'
 
 function App() {
@@ -11,6 +12,7 @@ function App() {
       <Route element={<AppLayout />}>
         <Route index element={<HomePage />} />
         <Route path="alumnos" element={<StudentsPage />} />
+        <Route path="alumnos/:studentId" element={<StudentProfilePage />} />
         <Route
           path="agenda"
           element={

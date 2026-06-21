@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { ApiError } from '../api/databaseApi'
 import {
   getStudentsDirectory,
@@ -227,7 +228,9 @@ export function StudentsPage() {
                 <div className="student-identity">
                   <span className="student-avatar">{studentInitials(student)}</span>
                   <div>
-                    <h2>{student.fullName}</h2>
+                    <h2>
+                      <Link to={`/alumnos/${student.id}`}>{student.fullName}</Link>
+                    </h2>
                     <p>
                       {student.enrollmentNumber} · {student.email ?? 'Sin correo'}
                     </p>
