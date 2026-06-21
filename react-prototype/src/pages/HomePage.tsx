@@ -5,7 +5,6 @@ import {
   getDashboardSnapshot,
   type UpcomingCourse,
 } from '../features/dashboard/dashboardService'
-import { MasterSpotlight } from '../features/dashboard/MasterSpotlight'
 
 const dateFormatter = new Intl.DateTimeFormat('es-ES', {
   weekday: 'short',
@@ -38,7 +37,6 @@ function CourseCard({ course }: { course: UpcomingCourse }) {
 function DashboardSkeleton() {
   return (
     <div className="dashboard-skeleton" aria-label="Cargando panel">
-      <div className="skeleton skeleton-title" />
       <div className="metric-grid">
         {[1, 2, 3, 4].map((item) => (
           <div className="skeleton skeleton-card" key={item} />
@@ -100,8 +98,6 @@ export function HomePage() {
 
   return (
     <div className="dashboard">
-      <MasterSpotlight checkedAt={dashboard.checkedAt} />
-
       <section className="metric-grid" aria-label="Resumen de la escuela">
         {metrics.map((metric, index) => (
           <article className="metric-card" key={metric.label}>
