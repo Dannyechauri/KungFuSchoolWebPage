@@ -214,10 +214,19 @@ async function ensureEmptyDemoDatabase() {
   const populated = protectedTables.filter((_, index) => contents[index].length > 0)
 
   if (populated.length > 0) {
+    if (process.argv.includes('--if-empty')) {
+      console.log(
+        `Datos demo ya presentes en ${populated.join(', ')}; no se generan duplicados.`,
+      )
+      return false
+    }
+
     throw new Error(
       `Seed cancelado: ya existen datos en ${populated.join(', ')}. Usa una base vacía para evitar duplicados.`,
     )
   }
+
+  return true
 }
 
 async function seedStyles() {
@@ -475,7 +484,11 @@ async function seedEnrollments(students, courses) {
 
 async function main() {
   console.log(`Generando datos demo mediante ${API_URL}...`)
-  await ensureEmptyDemoDatabase()
+  const databaseIsEmpty = await ensureEmptyDemoDatabase()
+
+  if (!databaseIsEmpty) {
+    return
+  }
 
   const styles = await seedStyles()
   const people = await seedPeople()
