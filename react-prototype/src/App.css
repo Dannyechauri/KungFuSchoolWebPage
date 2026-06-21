@@ -153,6 +153,89 @@
   min-width: 0;
 }
 
+.zodiac-carousel {
+  position: relative;
+  min-width: 0;
+  height: 5.4rem;
+  overflow: hidden;
+  background:
+    repeating-linear-gradient(
+      8deg,
+      rgba(54, 38, 23, 0.025) 0,
+      rgba(54, 38, 23, 0.025) 1px,
+      transparent 1px,
+      transparent 6px
+    ),
+    #ddcba9;
+  border-bottom: 1px solid #b8a17a;
+}
+
+.zodiac-carousel::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--red), transparent);
+  opacity: 0.28;
+  content: '';
+}
+
+.zodiac-marquee {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  height: 100%;
+  animation: zodiac-scroll 42s linear infinite;
+}
+
+.zodiac-sequence {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.zodiac-animal {
+  display: grid;
+  flex: 0 0 4.8rem;
+  place-items: center;
+  gap: 0.05rem;
+}
+
+.zodiac-animal img {
+  width: 3.25rem;
+  height: 3.25rem;
+  object-fit: contain;
+  filter: sepia(0.55) contrast(1.08);
+  opacity: 0.74;
+}
+
+.zodiac-animal span {
+  color: rgba(111, 7, 16, 0.68);
+  font-family: Georgia, serif;
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.zodiac-divider {
+  display: grid;
+  flex: 0 0 6rem;
+  place-items: center;
+}
+
+.zodiac-divider img {
+  width: 4.35rem;
+  height: 4.35rem;
+  object-fit: contain;
+  opacity: 0.8;
+}
+
+@keyframes zodiac-scroll {
+  to {
+    transform: translateX(-33.333333%);
+  }
+}
+
 .app-content {
   width: min(88rem, 100%);
   margin: 0 auto;
@@ -1327,6 +1410,28 @@ h1 {
     font-size: 0.85rem;
   }
 
+  .zodiac-carousel {
+    height: 4.8rem;
+  }
+
+  .zodiac-animal {
+    flex-basis: 4.25rem;
+  }
+
+  .zodiac-animal img {
+    width: 2.9rem;
+    height: 2.9rem;
+  }
+
+  .zodiac-divider {
+    flex-basis: 5.2rem;
+  }
+
+  .zodiac-divider img {
+    width: 3.8rem;
+    height: 3.8rem;
+  }
+
   .app-content {
     padding: 2rem 1rem 5rem;
   }
@@ -1459,6 +1564,10 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .zodiac-marquee {
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {

@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { API_URL } from '../config'
+import { ZodiacCarousel } from '../components/ZodiacCarousel'
 
 const navigation = [
   { to: '/', label: 'Panel', marker: '01', end: true },
@@ -55,6 +56,7 @@ export function AppLayout() {
           </div>
           <p>Barcelona · Gestión interna</p>
         </header>
+        <ZodiacCarousel />
         <main className="app-content">
           <Outlet />
         </main>
