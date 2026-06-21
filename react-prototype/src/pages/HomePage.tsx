@@ -5,6 +5,7 @@ import {
   getDashboardSnapshot,
   type UpcomingCourse,
 } from '../features/dashboard/dashboardService'
+import { MasterSpotlight } from '../features/dashboard/MasterSpotlight'
 
 const dateFormatter = new Intl.DateTimeFormat('es-ES', {
   weekday: 'short',
@@ -99,25 +100,7 @@ export function HomePage() {
 
   return (
     <div className="dashboard">
-      <section className="dashboard-hero">
-        <div>
-          <p className="page-kicker">Panel interno · Maestro y administración</p>
-          <h1>Gestión diaria de la escuela</h1>
-          <p className="page-description">
-            Consulta alumnos, actividad docente, cursos y conocimiento técnico
-            desde un único lugar.
-          </p>
-        </div>
-        <div className="status-card">
-          <span className="status-dot" aria-hidden="true" />
-          <div>
-            <strong>Servicios operativos</strong>
-            <span>
-              Actualizado {dateFormatter.format(new Date(dashboard.checkedAt))}
-            </span>
-          </div>
-        </div>
-      </section>
+      <MasterSpotlight checkedAt={dashboard.checkedAt} />
 
       <section className="metric-grid" aria-label="Resumen de la escuela">
         {metrics.map((metric, index) => (

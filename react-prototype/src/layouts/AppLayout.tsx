@@ -19,8 +19,8 @@ export function AppLayout() {
             alt="Escudo del Instituto de Wu-shu"
           />
           <div>
-            <p>Instituto de</p>
-            <strong>Wu-shu</strong>
+            <strong>Instituto de Wu-shu</strong>
+            <p>de Barcelona</p>
           </div>
         </div>
 
