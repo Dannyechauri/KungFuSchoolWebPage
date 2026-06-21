@@ -4,6 +4,7 @@ import { HomePage } from './pages/HomePage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
 import { StudentsPage } from './pages/StudentsPage'
 import { StudentProfilePage } from './pages/StudentProfilePage'
+import { CalendarPage } from './pages/CalendarPage'
 import './App.css'
 
 function App() {
@@ -13,15 +14,7 @@ function App() {
         <Route index element={<HomePage />} />
         <Route path="alumnos" element={<StudentsPage />} />
         <Route path="alumnos/:studentId" element={<StudentProfilePage />} />
-        <Route
-          path="agenda"
-          element={
-            <PlaceholderPage
-              title="Agenda"
-              description="Cursos y próximas actividades de la escuela."
-            />
-          }
-        />
+        <Route path="agenda" element={<CalendarPage />} />
         <Route
           path="conocimiento"
           element={
