@@ -385,18 +385,38 @@ async function seedGradeForms(grades, forms) {
   return links
 }
 
-async function seedStudentForms(students, forms) {
+async function seedStudentForms(students, forms, grades, gradeForms) {
   const links = []
+  const requiredFormsByGrade = new Map()
 
-  for (let index = 0; index < 40; index += 1) {
-    const learnedDate = new Date(2021 + (index % 5), (index * 3) % 12, 2 + (index % 24))
-    links.push(
-      await insert('alumno_forma', {
-        id_alumno: students[index % students.length].id_alumno,
-        id_forma: forms[(index * 7) % forms.length].id_forma,
-        fecha_aprendida: dateOnly(learnedDate),
-      }),
-    )
+  gradeForms
+    .filter((relation) => !relation.es_opcional)
+    .forEach((relation) => {
+      const requiredForms = requiredFormsByGrade.get(relation.id_grado) ?? []
+      requiredForms.push(relation.id_forma)
+      requiredFormsByGrade.set(relation.id_grado, requiredForms)
+    })
+
+  for (const [studentIndex, student] of students.entries()) {
+    const targetGrade = grades[studentIndex % grades.length]
+    const requiredForms = requiredFormsByGrade.get(targetGrade.id_grado) ?? []
+    const additionalForm = forms[(studentIndex * 7 + 5) % forms.length].id_forma
+    const learnedForms = [...new Set([...requiredForms, additionalForm])]
+
+    for (const [formIndex, formId] of learnedForms.entries()) {
+      const learnedDate = new Date(
+        2021 + (studentIndex % 5),
+        (studentIndex * 3 + formIndex) % 12,
+        2 + ((studentIndex + formIndex) % 24),
+      )
+      links.push(
+        await insert('alumno_forma', {
+          id_alumno: student.id_alumno,
+          id_forma: formId,
+          fecha_aprendida: dateOnly(learnedDate),
+        }),
+      )
+    }
   }
 
   return links
@@ -466,7 +486,12 @@ async function main() {
   const forms = await seedForms(styles)
   const grades = await seedGrades()
   const gradeForms = await seedGradeForms(grades, forms)
-  const studentForms = await seedStudentForms(students, forms)
+  const studentForms = await seedStudentForms(
+    students,
+    forms,
+    grades,
+    gradeForms,
+  )
   const courses = await seedCourses(instructors, styles)
   const enrollments = await seedEnrollments(students, courses)
 

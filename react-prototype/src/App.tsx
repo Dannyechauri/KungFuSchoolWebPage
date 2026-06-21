@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from './layouts/AppLayout'
 import { HomePage } from './pages/HomePage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { StudentsPage } from './pages/StudentsPage'
 import './App.css'
 
 function App() {
@@ -9,15 +10,7 @@ function App() {
     <Routes>
       <Route element={<AppLayout />}>
         <Route index element={<HomePage />} />
-        <Route
-          path="alumnos"
-          element={
-            <PlaceholderPage
-              title="Alumnos"
-              description="Listado y progreso de los alumnos de la escuela."
-            />
-          }
-        />
+        <Route path="alumnos" element={<StudentsPage />} />
         <Route
           path="agenda"
           element={
