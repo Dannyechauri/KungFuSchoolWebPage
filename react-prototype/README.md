@@ -3,95 +3,187 @@
 Exploración frontend construida sobre el backend existente, sin modificar su
 esquema ni sus endpoints.
 
-## Requisitos
+## Instalación desde cero
 
-- Node.js 20.19 o superior
-- Java 21 o superior
-- PostgreSQL 14 o superior
-- Bash en macOS, Linux o WSL
+Al terminar estos pasos deben estar funcionando:
 
-## Desarrollo
+- PostgreSQL con una base local llamada `kungfu_school` y datos demo;
+- el backend en `http://localhost:8080`; y
+- React en `http://localhost:8000`.
 
-### Arranque completo en un comando
+### 1. Obtener el proyecto completo
 
-Con los tres repositorios clonados como submódulos, ejecuta:
+Después de clonar `KungFuSchoolAdminSystem`, descarga sus repositorios enlazados:
 
 ```bash
-npm run dev:all
+cd KungFuSchoolAdminSystem
+git submodule update --init --recursive
 ```
 
-El comando:
+La estructura necesaria es:
 
-1. valida Node.js 20.19+, Java 21 y PostgreSQL;
-2. instala las dependencias npm;
-3. arranca PostgreSQL de Homebrew si está instalado pero detenido;
-4. crea `kungfu_school` si no existe;
-5. arranca el backend y deja que Flyway cree el esquema;
-6. genera datos demo si la base está vacía; y
-7. arranca React en `http://localhost:8000`.
+```text
+KungFuSchoolAdminSystem/
+├── KungFuBackendService/backend-service/
+└── KungFuSchoolWebPage/react-prototype/
+```
 
-El wrapper de Gradle descarga las dependencias del backend automáticamente. Para
-detener los procesos iniciados por el comando, pulsa `Ctrl+C`.
+### 2. Instalar los programas necesarios
 
-Por defecto se utiliza el usuario del sistema para PostgreSQL. Si tu instalación
-usa otras credenciales, copia `.env.dev.example` como `.env.dev.local` y cambia
-los valores `DB_*`. También puedes cambiar los puertos del backend y frontend.
-Este archivo local está ignorado por Git.
+- [Node.js](https://nodejs.org/) 20.19 o superior, con npm.
+- [Java JDK](https://adoptium.net/) 21 o superior.
+- [PostgreSQL](https://www.postgresql.org/download/) 14 o superior, incluyendo
+  `psql`, `createdb` y `pg_isready`.
+- Git y `curl`.
+- Bash para utilizar el arranque automático en macOS, Linux o WSL.
 
-### Compatibilidad por sistema operativo
+Comprueba la instalación en una terminal:
+
+```bash
+node --version
+npm --version
+java -version
+psql --version
+```
+
+### 3. Seguir los pasos de tu sistema operativo
 
 #### macOS
 
-`npm run dev:all` funciona directamente. Si PostgreSQL fue instalado mediante
-Homebrew y está detenido, el script intenta arrancar su servicio.
+Con Homebrew se pueden instalar los requisitos mediante:
+
+```bash
+brew install node@20 openjdk@21 postgresql@16
+```
+
+Entra en el prototipo y ejecuta:
+
+```bash
+cd KungFuSchoolWebPage/react-prototype
+npm run dev:all
+```
+
+El script instala las dependencias del proyecto, arranca PostgreSQL de Homebrew,
+crea la base, ejecuta las migraciones, genera los datos demo y levanta backend y
+frontend. Pulsa `Ctrl+C` para detener los procesos iniciados por el comando.
 
 #### Linux
 
-`npm run dev:all` funciona con Bash. PostgreSQL debe estar arrancado previamente;
-por ejemplo, en distribuciones con systemd:
+Instala Node.js 20.19+, Java 21 y PostgreSQL con el gestor de paquetes de tu
+distribución. En Ubuntu o Debian, Java y PostgreSQL pueden instalarse así:
 
 ```bash
-sudo systemctl start postgresql
+sudo apt update
+sudo apt install openjdk-21-jdk postgresql postgresql-client curl
+sudo systemctl enable --now postgresql
+```
+
+La instalación habitual de PostgreSQL crea el usuario `postgres`. Asígnale una
+contraseña para permitir que el script se conecte localmente:
+
+```bash
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'kungfu_dev';"
+```
+
+Entra en el prototipo, crea la configuración local y edítala:
+
+```bash
+cd KungFuSchoolWebPage/react-prototype
+cp .env.dev.example .env.dev.local
+```
+
+Configura al menos estas líneas en `.env.dev.local`:
+
+```text
+DB_USER=postgres
+DB_PASSWORD=kungfu_dev
+```
+
+Finalmente ejecuta:
+
+```bash
 npm run dev:all
 ```
 
-El usuario configurado en `DB_USER` debe poder conectarse y crear bases de datos.
-Si las credenciales no coinciden con el usuario del sistema, configúralas en
-`.env.dev.local`.
+#### Windows con WSL
 
-#### Windows
-
-La opción recomendada para esta POC es usar WSL. Instala Node.js, Java y
-PostgreSQL dentro de WSL y ejecuta el mismo comando que en Linux:
+Instala WSL con Ubuntu y realiza **dentro de WSL** todos los pasos indicados en
+la sección de Linux, incluida la instalación y configuración de PostgreSQL. El
+resultado y el comando final son los mismos:
 
 ```bash
 npm run dev:all
 ```
 
-El script Bash no soporta PowerShell de forma nativa. Para trabajar sin WSL,
-arranca PostgreSQL y utiliza tres terminales de PowerShell:
+#### Windows nativo con PowerShell
 
-```powershell
-# Terminal 1: backend
-cd ..\..\KungFuBackendService\backend-service
-$env:DB_USER = "postgres"
-$env:DB_PASSWORD = "tu_password"
-.\gradlew.bat bootRun
-```
+El script Bash no funciona de forma nativa en PowerShell. El resultado es el
+mismo, pero la primera preparación se realiza manualmente y se usan dos
+terminales.
 
-```powershell
-# Terminal 2: datos demo, cuando el backend ya responda
-npm install
-npm run seed:demo
-```
+1. Instala Node.js, Java 21 y PostgreSQL usando los instaladores enlazados arriba.
+   Durante la instalación de PostgreSQL, conserva la contraseña del usuario
+   `postgres` y asegúrate de instalar también sus herramientas de línea de
+   comandos.
 
-```powershell
-# Terminal 3: frontend
-npm run dev
-```
+2. Crea la base **antes de arrancar el backend**. Puedes hacerlo desde pgAdmin
+   mediante `Servers > PostgreSQL > Databases > Create > Database`, usando el
+   nombre `kungfu_school`; o desde PowerShell:
 
-Antes del primer arranque nativo en Windows, crea `kungfu_school` desde pgAdmin
-o con `createdb -U postgres kungfu_school`.
+   ```powershell
+   createdb -h localhost -U postgres kungfu_school
+   ```
+
+3. Abre una primera terminal PowerShell, entra en el backend y arráncalo con las
+   credenciales elegidas durante la instalación:
+
+   ```powershell
+   cd C:\ruta\al\proyecto\KungFuSchoolAdminSystem\KungFuBackendService\backend-service
+   $env:DB_HOST = "localhost"
+   $env:DB_PORT = "5432"
+   $env:DB_NAME = "kungfu_school"
+   $env:DB_USER = "postgres"
+   $env:DB_PASSWORD = "tu_password_de_postgresql"
+   .\gradlew.bat bootRun
+   ```
+
+   La primera ejecución descarga Gradle y sus dependencias. Espera hasta que el
+   backend indique que ha arrancado; Flyway creará las tablas automáticamente.
+
+4. Abre una segunda terminal PowerShell, instala las dependencias del frontend y
+   genera los datos demo:
+
+   ```powershell
+   cd C:\ruta\al\proyecto\KungFuSchoolAdminSystem\KungFuSchoolWebPage\react-prototype
+   npm install
+   npm run seed:demo
+   ```
+
+5. En esa misma segunda terminal, arranca React:
+
+   ```powershell
+   npm run dev
+   ```
+
+6. Abre `http://localhost:8000`. Mantén ambas terminales abiertas mientras uses
+   la aplicación; `Ctrl+C` detiene cada servicio.
+
+## Desarrollo
+
+### Qué hace `npm run dev:all`
+
+El comando automático:
+
+1. valida Node.js, Java y PostgreSQL;
+2. instala las dependencias npm;
+3. prepara la base `kungfu_school`;
+4. arranca el backend y deja que Flyway cree el esquema;
+5. genera datos demo sólo si la base está vacía; y
+6. arranca React.
+
+Por defecto utiliza el usuario del sistema para PostgreSQL. Para cambiar
+credenciales o puertos, copia `.env.dev.example` como `.env.dev.local` y edita
+sus valores. El archivo local está ignorado por Git.
 
 ### Arranque manual
 
