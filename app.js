@@ -10,6 +10,9 @@ const appState = {
     refreshTimerId: null,
     selectedTable: null,
     selectedColumns: [],
+    gradosOptions: [],
+    estilosOptions: [],
+    cursosAgendadosOptions: { cursos: [], instructores: [] },
 };
 
 // ==================== Inicialización ==================== 
@@ -213,6 +216,44 @@ async function openTableData(tableName) {
 
         const columns = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/columns`);
         appState.selectedColumns = columns;
+        
+        // Cargar datos especiales para cursos_agendados
+        if (tableName === 'cursos_agendados') {
+            try {
+                const cursos = await apiCall('/api/database/tables/cursos/rows?limit=100');
+                const instructores = await apiCall('/api/database/tables/instructores/rows?limit=100');
+                appState.cursosAgendadosOptions = {
+                    cursos: cursos || [],
+                    instructores: instructores || []
+                };
+            } catch (e) {
+                console.warn('No se pudieron cargar opciones para cursos_agendados:', e);
+                appState.cursosAgendadosOptions = { cursos: [], instructores: [] };
+            }
+        }
+
+        // Cargar catalogo de grados para alumnos
+        if (tableName === 'alumnos') {
+            try {
+                const grados = await apiCall('/api/database/tables/grados/rows?limit=200');
+                appState.gradosOptions = grados || [];
+            } catch (e) {
+                console.warn('No se pudo cargar el catalogo de grados:', e);
+                appState.gradosOptions = [];
+            }
+        }
+
+        // Cargar catalogo de estilos para formas
+        if (tableName === 'formas') {
+            try {
+                const estilos = await apiCall('/api/database/tables/estilos/rows?limit=200');
+                appState.estilosOptions = estilos || [];
+            } catch (e) {
+                console.warn('No se pudo cargar el catalogo de estilos:', e);
+                appState.estilosOptions = [];
+            }
+        }
+        
         renderInsertForm(columns);
         await reloadSelectedTableData();
         showToast(`Tabla seleccionada: ${tableName}`, 'success');
@@ -229,10 +270,101 @@ async function reloadSelectedTableData() {
 
     try {
         const tableName = appState.selectedTable;
-        const rows = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows?limit=100`);
+        let rows = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows?limit=100`);
+        
+        // Enriquecer datos para cursos_agendados
+        if (tableName === 'cursos_agendados' && rows.length > 0) {
+            rows = await enrichCursosAgendadosData(rows);
+        }
+
+        // Enriquecer datos para alumnos
+        if (tableName === 'alumnos' && rows.length > 0) {
+            rows = await enrichAlumnosData(rows);
+        }
+
+        // Enriquecer datos para formas
+        if (tableName === 'formas' && rows.length > 0) {
+            rows = await enrichFormasData(rows);
+        }
+        
         renderTableData(rows, appState.selectedColumns);
     } catch (error) {
         showToast('No se pudieron cargar los registros', 'error');
+    }
+}
+
+async function enrichCursosAgendadosData(rows) {
+    try {
+        // Cargar mapeos de IDs a nombres
+        const instructores = await apiCall('/api/database/tables/instructores/rows?limit=100');
+        const cursos = await apiCall('/api/database/tables/cursos/rows?limit=100');
+        
+        const instructorMap = {};
+        const cursoMap = {};
+        
+        instructores.forEach(i => {
+            instructorMap[i.id_instructor] = i.nombre || `Instructor ${i.id_instructor}`;
+        });
+        
+        cursos.forEach(c => {
+            cursoMap[c.id_curso] = c.nombre || `Curso ${c.id_curso}`;
+        });
+        
+        // Enriquecer cada fila
+        return rows.map(row => ({
+            ...row,
+            id_instructor: `${row.id_instructor} - ${instructorMap[row.id_instructor] || 'Desconocido'}`,
+            id_curso: `${row.id_curso} - ${cursoMap[row.id_curso] || 'Desconocido'}`
+        }));
+    } catch (e) {
+        console.warn('Error enriqueciendo datos de cursos_agendados:', e);
+        return rows;
+    }
+}
+
+async function enrichAlumnosData(rows) {
+    try {
+        const grados = appState.gradosOptions?.length > 0
+            ? appState.gradosOptions
+            : await apiCall('/api/database/tables/grados/rows?limit=200');
+
+        const gradoMap = {};
+        grados.forEach(g => {
+            gradoMap[g.id_grado] = g.nombre || `Grado ${g.id_grado}`;
+        });
+
+        return rows.map(row => ({
+            ...row,
+            id_grado: row.id_grado === null || row.id_grado === undefined
+                ? row.id_grado
+                : `${row.id_grado} - ${gradoMap[row.id_grado] || 'Desconocido'}`,
+        }));
+    } catch (e) {
+        console.warn('Error enriqueciendo datos de alumnos:', e);
+        return rows;
+    }
+}
+
+async function enrichFormasData(rows) {
+    try {
+        const estilos = appState.estilosOptions?.length > 0
+            ? appState.estilosOptions
+            : await apiCall('/api/database/tables/estilos/rows?limit=200');
+
+        const estiloMap = {};
+        estilos.forEach(e => {
+            estiloMap[e.id_estilo] = e.nombre || `Estilo ${e.id_estilo}`;
+        });
+
+        return rows.map(row => ({
+            ...row,
+            id_estilo: row.id_estilo === null || row.id_estilo === undefined
+                ? row.id_estilo
+                : `${row.id_estilo} - ${estiloMap[row.id_estilo] || 'Desconocido'}`,
+        }));
+    } catch (e) {
+        console.warn('Error enriqueciendo datos de formas:', e);
+        return rows;
     }
 }
 
@@ -288,6 +420,62 @@ function renderInsertForm(columns) {
         const dataType = String(col.dataType || '').toLowerCase();
         const isRequired = !col.nullable && !col.hasDefault;
         const requiredAttr = isRequired ? 'required' : '';
+
+        // Manejador especial para id_curso en cursos_agendados
+        if (appState.selectedTable === 'cursos_agendados' && col.name === 'id_curso') {
+            const cursos = appState.cursosAgendadosOptions?.cursos || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Curso (${col.dataType})${isRequired ? ' *' : ''}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un curso</option>
+                        ${cursos.map(c => `<option value="${c.id_curso}">${c.nombre || `Curso ${c.id_curso}`}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        }
+
+        // Manejador especial para id_instructor en cursos_agendados
+        if (appState.selectedTable === 'cursos_agendados' && col.name === 'id_instructor') {
+            const instructores = appState.cursosAgendadosOptions?.instructores || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Instructor (${col.dataType})${isRequired ? ' *' : ''}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un instructor</option>
+                        ${instructores.map(i => `<option value="${i.id_instructor}">${i.nombre || `Instructor ${i.id_instructor}`}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        }
+
+        // Manejador especial para id_grado en alumnos
+        if (appState.selectedTable === 'alumnos' && col.name === 'id_grado') {
+            const grados = appState.gradosOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Grado (${col.dataType})${isRequired ? ' *' : ''}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un grado</option>
+                        ${grados.map(g => `<option value="${g.id_grado}">${g.nombre || `Grado ${g.id_grado}`}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        }
+
+        // Manejador especial para id_estilo en formas
+        if (appState.selectedTable === 'formas' && col.name === 'id_estilo') {
+            const estilos = appState.estilosOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Estilo (${col.dataType})${isRequired ? ' *' : ''}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un estilo</option>
+                        ${estilos.map(e => `<option value="${e.id_estilo}">${e.nombre || `Estilo ${e.id_estilo}`}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        }
 
         if (col.name === 'rol') {
             return `
