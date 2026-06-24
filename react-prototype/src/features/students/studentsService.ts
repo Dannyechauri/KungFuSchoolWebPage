@@ -1,11 +1,12 @@
 import { databaseApi } from '../../api/databaseApi'
 import type {
+  CourseRow,
   EnrollmentRow,
   FormRow,
   GradeFormRow,
   GradeRow,
-  CourseRow,
   PersonRow,
+  ScheduledCourseRow,
   StudentFormRow,
   StudentRow,
   StyleRow,
@@ -66,7 +67,7 @@ export type StudentProfile = {
   enrollmentNumber: string
   joinedAt: string
   active: boolean
-  birthDate: string
+  birthDate: string | null
   email: string | null
   phone: string | null
   address: string | null
@@ -75,49 +76,29 @@ export type StudentProfile = {
   courses: StudentCourse[]
 }
 
-function fullName(person?: PersonRow) {
-  if (!person) return 'Persona sin ficha asociada'
+function personFullName(person?: PersonRow) {
+  if (!person) return null
 
   return [person.nombre, person.apellido_paterno, person.apellido_materno]
     .filter(Boolean)
     .join(' ')
 }
 
-export async function getStudentsDirectory(): Promise<StudentsDirectory> {
-  const [
-    studentRows,
-    people,
-    studentForms,
-    forms,
-    styles,
-    enrollments,
-    grades,
-    gradeForms,
-  ] = await Promise.all([
-    databaseApi.rows<StudentRow>('alumnos'),
-    databaseApi.rows<PersonRow>('personas'),
-    databaseApi.rows<StudentFormRow>('alumno_forma'),
-    databaseApi.rows<FormRow>('formas'),
-    databaseApi.rows<StyleRow>('estilos'),
-    databaseApi.rows<EnrollmentRow>('inscripciones'),
-    databaseApi.rows<GradeRow>('grados'),
-    databaseApi.rows<GradeFormRow>('grado_forma'),
-  ])
+function studentFullName(student: StudentRow, person?: PersonRow) {
+  return student.nombre ?? personFullName(person) ?? 'Alumno sin nombre registrado'
+}
 
-  const peopleById = new Map(people.map((person) => [person.id_persona, person]))
-  const stylesById = new Map(styles.map((style) => [style.id_estilo, style]))
-  const formsById = new Map(forms.map((form) => [form.id_forma, form]))
+function studentEmail(student: StudentRow, person?: PersonRow) {
+  return student.correo_electronico ?? person?.email ?? null
+}
 
-  const requiredFormsByGrade = new Map<number, number[]>()
-  gradeForms
-    .filter((relation) => !relation.es_opcional)
-    .forEach((relation) => {
-      const requiredForms = requiredFormsByGrade.get(relation.id_grado) ?? []
-      requiredForms.push(relation.id_forma)
-      requiredFormsByGrade.set(relation.id_grado, requiredForms)
-    })
-
+function buildKnownForms(
+  studentForms: StudentFormRow[],
+  formsById: Map<number, FormRow>,
+  stylesById: Map<number, StyleRow>,
+) {
   const formsByStudent = new Map<number, StudentKnownForm[]>()
+
   studentForms.forEach((relation) => {
     const form = formsById.get(relation.id_forma)
     if (!form) return
@@ -131,6 +112,71 @@ export async function getStudentsDirectory(): Promise<StudentsDirectory> {
     })
     formsByStudent.set(relation.id_alumno, knownForms)
   })
+
+  return formsByStudent
+}
+
+function buildRequiredFormsByGrade(gradeForms: GradeFormRow[]) {
+  const requiredFormsByGrade = new Map<number, number[]>()
+
+  gradeForms
+    .filter((relation) => !relation.es_opcional)
+    .forEach((relation) => {
+      const requiredForms = requiredFormsByGrade.get(relation.id_grado) ?? []
+      requiredForms.push(relation.id_forma)
+      requiredFormsByGrade.set(relation.id_grado, requiredForms)
+    })
+
+  return requiredFormsByGrade
+}
+
+function completedGradeIdsForKnownForms(
+  knownForms: StudentKnownForm[],
+  grades: GradeRow[],
+  requiredFormsByGrade: Map<number, number[]>,
+) {
+  const knownFormIds = new Set(knownForms.map((form) => form.id))
+
+  return grades
+    .filter((grade) => {
+      const requiredForms = requiredFormsByGrade.get(grade.id_grado) ?? []
+      return (
+        requiredForms.length > 0 &&
+        requiredForms.every((formId) => knownFormIds.has(formId))
+      )
+    })
+    .map((grade) => grade.id_grado)
+}
+
+export async function getStudentsDirectory(): Promise<StudentsDirectory> {
+  const tables = await databaseApi.tables()
+  const hasPeople = tables.includes('personas')
+
+  const [
+    studentRows,
+    people,
+    studentForms,
+    forms,
+    styles,
+    enrollments,
+    grades,
+    gradeForms,
+  ] = await Promise.all([
+    databaseApi.rows<StudentRow>('alumnos'),
+    hasPeople ? databaseApi.rows<PersonRow>('personas') : Promise.resolve([]),
+    databaseApi.rows<StudentFormRow>('alumno_forma'),
+    databaseApi.rows<FormRow>('formas'),
+    databaseApi.rows<StyleRow>('estilos'),
+    databaseApi.rows<EnrollmentRow>('inscripciones'),
+    databaseApi.rows<GradeRow>('grados'),
+    databaseApi.rows<GradeFormRow>('grado_forma'),
+  ])
+
+  const peopleById = new Map(people.map((person) => [person.id_persona, person]))
+  const stylesById = new Map(styles.map((style) => [style.id_estilo, style]))
+  const formsById = new Map(forms.map((form) => [form.id_forma, form]))
+  const requiredFormsByGrade = buildRequiredFormsByGrade(gradeForms)
+  const formsByStudent = buildKnownForms(studentForms, formsById, stylesById)
 
   const activeEnrollmentsByStudent = new Map<number, number>()
   enrollments
@@ -147,28 +193,25 @@ export async function getStudentsDirectory(): Promise<StudentsDirectory> {
     const knownForms = (formsByStudent.get(student.id_alumno) ?? []).sort((a, b) =>
       a.name.localeCompare(b.name, 'es'),
     )
-    const knownFormIds = new Set(knownForms.map((form) => form.id))
-    const completedGradeIds = grades
-      .filter((grade) => {
-        const requiredForms = requiredFormsByGrade.get(grade.id_grado) ?? []
-        return (
-          requiredForms.length > 0 &&
-          requiredForms.every((formId) => knownFormIds.has(formId))
-        )
-      })
-      .map((grade) => grade.id_grado)
+    const completedGradeIds = new Set(
+      completedGradeIdsForKnownForms(knownForms, grades, requiredFormsByGrade),
+    )
+
+    if (student.id_grado !== undefined) {
+      completedGradeIds.add(student.id_grado)
+    }
 
     return {
       id: student.id_alumno,
-      fullName: fullName(person),
-      email: person?.email ?? null,
-      phone: person?.telefono ?? null,
+      fullName: studentFullName(student, person),
+      email: studentEmail(student, person),
+      phone: person?.telefono ?? student.tutor_telefono ?? null,
       enrollmentNumber: student.numero_matricula,
       joinedAt: student.fecha_ingreso,
       active: student.activo,
       knownForms,
       activeEnrollments: activeEnrollmentsByStudent.get(student.id_alumno) ?? 0,
-      completedGradeIds,
+      completedGradeIds: [...completedGradeIds],
     }
   })
 
@@ -186,6 +229,10 @@ export async function getStudentsDirectory(): Promise<StudentsDirectory> {
 export async function getStudentProfile(
   studentId: number,
 ): Promise<StudentProfile | null> {
+  const tables = await databaseApi.tables()
+  const hasPeople = tables.includes('personas')
+  const hasScheduledCourses = tables.includes('cursos_agendados')
+
   const [
     studentRows,
     people,
@@ -194,24 +241,28 @@ export async function getStudentProfile(
     styles,
     enrollments,
     courses,
+    scheduledCourses,
     grades,
     gradeForms,
   ] = await Promise.all([
     databaseApi.rows<StudentRow>('alumnos'),
-    databaseApi.rows<PersonRow>('personas'),
+    hasPeople ? databaseApi.rows<PersonRow>('personas') : Promise.resolve([]),
     databaseApi.rows<StudentFormRow>('alumno_forma'),
     databaseApi.rows<FormRow>('formas'),
     databaseApi.rows<StyleRow>('estilos'),
     databaseApi.rows<EnrollmentRow>('inscripciones'),
     databaseApi.rows<CourseRow>('cursos'),
+    hasScheduledCourses
+      ? databaseApi.rows<ScheduledCourseRow>('cursos_agendados')
+      : Promise.resolve([]),
     databaseApi.rows<GradeRow>('grados'),
     databaseApi.rows<GradeFormRow>('grado_forma'),
   ])
 
   const student = studentRows.find((row) => row.id_alumno === studentId)
-  const person = people.find((row) => row.id_persona === studentId)
-  if (!student || !person) return null
+  if (!student) return null
 
+  const person = people.find((row) => row.id_persona === studentId)
   const stylesById = new Map(styles.map((style) => [style.id_estilo, style]))
   const formsById = new Map(forms.map((form) => [form.id_forma, form]))
   const knownForms = studentForms
@@ -251,17 +302,42 @@ export async function getStudentProfile(
         beltColor: grade.color_cinturon,
         learnedRequiredForms: requiredFormIds.length - missingForms.length,
         requiredForms: requiredFormIds.length,
-        completed: requiredFormIds.length > 0 && missingForms.length === 0,
+        completed:
+          grade.id_grado === student.id_grado ||
+          (requiredFormIds.length > 0 && missingForms.length === 0),
         missingForms,
       }
     })
 
   const coursesById = new Map(courses.map((course) => [course.id_curso, course]))
+  const scheduledCoursesById = new Map(
+    scheduledCourses.map((course) => [course.id_curso_agendado, course]),
+  )
   const studentCourses = enrollments
     .filter((enrollment) => enrollment.id_alumno === studentId)
     .flatMap((enrollment): StudentCourse[] => {
+      if (hasScheduledCourses && enrollment.id_curso_agendado !== undefined) {
+        const scheduledCourse = scheduledCoursesById.get(enrollment.id_curso_agendado)
+        if (!scheduledCourse) return []
+
+        const course = coursesById.get(scheduledCourse.id_curso)
+        if (!course) return []
+
+        return [
+          {
+            id: scheduledCourse.id_curso_agendado,
+            name: course.nombre,
+            topic: course.tema,
+            scheduledAt: scheduledCourse.fecha_hora,
+            enrollmentStatus: enrollment.estado,
+          },
+        ]
+      }
+
+      if (enrollment.id_curso === undefined) return []
+
       const course = coursesById.get(enrollment.id_curso)
-      if (!course) return []
+      if (!course?.fecha_hora) return []
 
       return [
         {
@@ -281,14 +357,14 @@ export async function getStudentProfile(
 
   return {
     id: student.id_alumno,
-    fullName: fullName(person),
+    fullName: studentFullName(student, person),
     enrollmentNumber: student.numero_matricula,
     joinedAt: student.fecha_ingreso,
     active: student.activo,
-    birthDate: person.fecha_nacimiento,
-    email: person.email,
-    phone: person.telefono,
-    address: person.direccion,
+    birthDate: student.fecha_nacimiento ?? person?.fecha_nacimiento ?? null,
+    email: studentEmail(student, person),
+    phone: person?.telefono ?? student.tutor_telefono ?? null,
+    address: person?.direccion ?? null,
     knownForms,
     gradeProgress,
     courses: studentCourses,

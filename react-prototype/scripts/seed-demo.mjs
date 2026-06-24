@@ -188,6 +188,10 @@ function rows(tableName) {
   return request(`/api/database/tables/${tableName}/rows?limit=500`)
 }
 
+function tables() {
+  return request('/api/database/tables')
+}
+
 function insert(tableName, payload) {
   return request(`/api/database/tables/${tableName}/rows`, {
     method: 'POST',
@@ -195,7 +199,7 @@ function insert(tableName, payload) {
   })
 }
 
-async function ensureEmptyDemoDatabase() {
+async function ensureEmptyDemoDatabase(existingTables) {
   const protectedTables = [
     'personas',
     'alumnos',
@@ -203,12 +207,12 @@ async function ensureEmptyDemoDatabase() {
     'administradores',
     'usuarios',
     'formas',
-    'grados',
     'grado_forma',
     'alumno_forma',
     'cursos',
+    'cursos_agendados',
     'inscripciones',
-  ]
+  ].filter((tableName) => existingTables.includes(tableName))
 
   const contents = await Promise.all(protectedTables.map(rows))
   const populated = protectedTables.filter((_, index) => contents[index].length > 0)
@@ -243,24 +247,43 @@ async function seedStyles() {
   return styleSeeds.map(([name]) => stylesByName.get(name))
 }
 
-async function seedPeople() {
-  const people = []
-
-  for (let index = 0; index < 40; index += 1) {
+function buildPersonSeeds() {
+  return Array.from({ length: 40 }, (_, index) => {
     const nombre = firstNames[index]
     const apellidoPaterno = paternalSurnames[index % paternalSurnames.length]
     const apellidoMaterno = maternalSurnames[(index * 3) % maternalSurnames.length]
-    const birthDate = new Date(1970 + ((index * 7) % 35), (index * 5) % 12, 2 + ((index * 3) % 25))
+    const birthDate = new Date(
+      1970 + ((index * 7) % 35),
+      (index * 5) % 12,
+      2 + ((index * 3) % 25),
+    )
 
+    return {
+      nombre,
+      apellido_paterno: apellidoPaterno,
+      apellido_materno: apellidoMaterno,
+      nombre_completo: [nombre, apellidoPaterno, apellidoMaterno].join(' '),
+      fecha_nacimiento: dateOnly(birthDate),
+      telefono: `6${String(10000000 + index * 13711).slice(-8)}`,
+      email: `${slug(nombre)}.${slug(apellidoPaterno)}${index + 1}@demo.iwushu.local`,
+      direccion: `Carrer de ${streetNames[index % streetNames.length]}, ${18 + index}`,
+    }
+  })
+}
+
+async function seedPeople(personSeeds) {
+  const people = []
+
+  for (const personSeed of personSeeds) {
     people.push(
       await insert('personas', {
-        nombre,
-        apellido_paterno: apellidoPaterno,
-        apellido_materno: apellidoMaterno,
-        fecha_nacimiento: dateOnly(birthDate),
-        telefono: `6${String(10000000 + index * 13711).slice(-8)}`,
-        email: `${slug(nombre)}.${slug(apellidoPaterno)}${index + 1}@demo.iwushu.local`,
-        direccion: `Carrer de ${streetNames[index % streetNames.length]}, ${18 + index}`,
+        nombre: personSeed.nombre,
+        apellido_paterno: personSeed.apellido_paterno,
+        apellido_materno: personSeed.apellido_materno,
+        fecha_nacimiento: personSeed.fecha_nacimiento,
+        telefono: personSeed.telefono,
+        email: personSeed.email,
+        direccion: personSeed.direccion,
       }),
     )
   }
@@ -268,57 +291,109 @@ async function seedPeople() {
   return people
 }
 
-async function seedStudents(people) {
+async function seedStudents(personSeeds, people, grades, hasPeopleTable) {
   const students = []
 
   for (let index = 0; index < 30; index += 1) {
     const joined = new Date(2017 + (index % 9), (index * 2) % 12, 1 + (index % 24))
+    const personSeed = personSeeds[index]
+    const grade = grades[index % grades.length]
+    const commonPayload = {
+      numero_matricula: `IW-${joined.getFullYear()}-${String(index + 1).padStart(3, '0')}`,
+      fecha_ingreso: dateOnly(joined),
+      activo: index < 27,
+    }
+
+    const payload = hasPeopleTable
+      ? {
+          id_alumno: people[index].id_persona,
+          ...commonPayload,
+        }
+      : {
+          nombre: personSeed.nombre_completo,
+          fecha_nacimiento: personSeed.fecha_nacimiento,
+          id_grado: grade.id_grado,
+          correo_electronico: personSeed.email,
+          grupo: ['A', 'B', 'C'][index % 3],
+          tutor_nombre:
+            index % 4 === 0
+              ? `${paternalSurnames[(index + 5) % paternalSurnames.length]} ${maternalSurnames[(index + 7) % maternalSurnames.length]}`
+              : null,
+          tutor_telefono:
+            index % 4 === 0
+              ? `6${String(20000000 + index * 17017).slice(-8)}`
+              : null,
+          observaciones:
+            index % 9 === 0
+              ? 'Pendiente revisar objetivos técnicos del trimestre.'
+              : null,
+          ...commonPayload,
+        }
+
     students.push(
-      await insert('alumnos', {
-        id_alumno: people[index].id_persona,
-        numero_matricula: `IW-${joined.getFullYear()}-${String(index + 1).padStart(3, '0')}`,
-        fecha_ingreso: dateOnly(joined),
-        activo: index < 27,
-      }),
+      await insert('alumnos', payload),
     )
   }
 
   return students
 }
 
-async function seedInstructors(students) {
+async function seedInstructors(students, personSeeds, hasPeopleTable) {
   const instructors = []
 
   for (let index = 0; index < 6; index += 1) {
+    const student = students[index]
+    const payload = hasPeopleTable
+      ? {
+          id_instructor: student.id_alumno,
+          fecha_contratacion: `${2015 + index}-09-01`,
+          activo: true,
+          especialidad: specialties[index],
+        }
+      : {
+          nombre: student.nombre ?? personSeeds[index].nombre_completo,
+          fecha_contratacion: `${2015 + index}-09-01`,
+          activo: true,
+          especialidad: specialties[index],
+          cinturon_actual: ['Negro', 'Negro 2.º Duan', 'Negro', 'Marrón', 'Negro', 'Negro'][index],
+        }
+
     instructors.push(
-      await insert('instructores', {
-        id_instructor: students[index].id_alumno,
-        fecha_contratacion: `${2015 + index}-09-01`,
-        activo: true,
-        especialidad: specialties[index],
-      }),
+      await insert('instructores', payload),
     )
   }
 
   return instructors
 }
 
-async function seedAdministrators(people) {
+async function seedAdministrators(personSeeds, people, hasPeopleTable) {
   const administrators = []
 
   for (let index = 36; index < 40; index += 1) {
+    const payload = hasPeopleTable
+      ? {
+          id_administrador: people[index].id_persona,
+          fecha_inicio: `${2020 + (index % 4)}-09-01`,
+        }
+      : {
+          nombre: personSeeds[index].nombre_completo,
+          fecha_inicio: `${2020 + (index % 4)}-09-01`,
+          rfc: null,
+        }
+
     administrators.push(
-      await insert('administradores', {
-        id_administrador: people[index].id_persona,
-        fecha_inicio: `${2020 + (index % 4)}-09-01`,
-      }),
+      await insert('administradores', payload),
     )
   }
 
   return administrators
 }
 
-async function seedUsers(people) {
+async function seedUsers(people, hasUsersTable) {
+  if (!hasUsersTable) {
+    return []
+  }
+
   const userPeople = [...people.slice(0, 30), ...people.slice(36, 40)]
   const users = []
   const demoHash = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'
@@ -359,20 +434,28 @@ async function seedForms(styles) {
 }
 
 async function seedGrades() {
-  const grades = []
+  const existingGrades = await rows('grados')
+  const gradesByName = new Map(existingGrades.map((grade) => [grade.nombre, grade]))
+  let nextOrder =
+    existingGrades.reduce(
+      (maxOrder, grade) => Math.max(maxOrder, Number(grade.orden_grado) || 0),
+      0,
+    ) + 1
 
   for (const [index, [name, beltColor]] of gradeSeeds.entries()) {
-    grades.push(
-      await insert('grados', {
+    if (!gradesByName.has(name)) {
+      const grade = await insert('grados', {
         nombre: name,
-        orden_grado: index + 1,
+        orden_grado: nextOrder,
         color_cinturon: beltColor,
         formas_requeridas: Math.min(4, Math.floor(index / 2) + 1),
-      }),
-    )
+      })
+      gradesByName.set(grade.nombre, grade)
+      nextOrder += 1
+    }
   }
 
-  return grades
+  return gradeSeeds.map(([name]) => gradesByName.get(name))
 }
 
 async function seedGradeForms(grades, forms) {
@@ -431,8 +514,33 @@ async function seedStudentForms(students, forms, grades, gradeForms) {
   return links
 }
 
-async function seedCourses(instructors, styles) {
+async function seedInstructorStyles(instructors, styles, hasInstructorStyleTable) {
+  if (!hasInstructorStyleTable) {
+    return []
+  }
+
+  const links = []
+
+  for (const [index, instructor] of instructors.entries()) {
+    const primaryStyle = styles[index % styles.length]
+    const secondaryStyle = styles[(index + 3) % styles.length]
+
+    for (const style of [primaryStyle, secondaryStyle]) {
+      links.push(
+        await insert('instructor_estilo', {
+          id_instructor: instructor.id_instructor,
+          id_estilo: style.id_estilo,
+        }),
+      )
+    }
+  }
+
+  return links
+}
+
+async function seedCourses(instructors, styles, hasScheduledCoursesTable) {
   const courses = []
+  const scheduledCourses = []
   const now = new Date()
 
   for (let index = 0; index < 30; index += 1) {
@@ -446,33 +554,50 @@ async function seedCourses(instructors, styles) {
       `Entrenamiento técnico de ${style.nombre}`,
     ]
 
-    courses.push(
-      await insert('cursos', {
-        id_instructor: instructors[index % instructors.length].id_instructor,
+    const course = await insert('cursos', {
         nombre: courseNames[index % courseNames.length],
         tema: index % 4 === 0 ? 'Seminario' : index % 4 === 1 ? 'Clase técnica' : index % 4 === 2 ? 'Práctica guiada' : 'Intensivo',
         descripcion: `Sesión dedicada al trabajo progresivo y aplicaciones de ${style.nombre}.`,
-        fecha_hora: localDateTime(scheduledAt),
-      }),
-    )
+        ...(hasScheduledCoursesTable
+          ? {}
+          : {
+              id_instructor: instructors[index % instructors.length].id_instructor,
+              fecha_hora: localDateTime(scheduledAt),
+            }),
+      })
+
+    courses.push(course)
+
+    if (hasScheduledCoursesTable) {
+      scheduledCourses.push(
+        await insert('cursos_agendados', {
+          id_curso: course.id_curso,
+          id_instructor: instructors[index % instructors.length].id_instructor,
+          fecha_hora: localDateTime(scheduledAt),
+          activo: true,
+        }),
+      )
+    }
   }
 
-  return courses
+  return { courses, scheduledCourses }
 }
 
-async function seedEnrollments(students, courses) {
+async function seedEnrollments(students, courseTargets, hasScheduledCoursesTable) {
   const enrollments = []
 
   for (let index = 0; index < 40; index += 1) {
     const studentIndex = index % students.length
-    const courseIndex = index < 30 ? (index * 7) % courses.length : ((index - 30) * 7 + 1) % courses.length
+    const courseIndex = index < 30 ? (index * 7) % courseTargets.length : ((index - 30) * 7 + 1) % courseTargets.length
     const enrolledAt = new Date()
     enrolledAt.setDate(enrolledAt.getDate() - (index % 45))
 
     enrollments.push(
       await insert('inscripciones', {
         id_alumno: students[studentIndex].id_alumno,
-        id_curso: courses[courseIndex].id_curso,
+        ...(hasScheduledCoursesTable
+          ? { id_curso_agendado: courseTargets[courseIndex].id_curso_agendado }
+          : { id_curso: courseTargets[courseIndex].id_curso }),
         fecha_inscripcion: dateOnly(enrolledAt),
         estado: index % 13 === 0 ? 'inactiva' : 'activa',
       }),
@@ -484,20 +609,35 @@ async function seedEnrollments(students, courses) {
 
 async function main() {
   console.log(`Generando datos demo mediante ${API_URL}...`)
-  const databaseIsEmpty = await ensureEmptyDemoDatabase()
+  const existingTables = await tables()
+  const hasPeopleTable = existingTables.includes('personas')
+  const hasUsersTable = existingTables.includes('usuarios')
+  const hasScheduledCoursesTable = existingTables.includes('cursos_agendados')
+  const hasInstructorStyleTable = existingTables.includes('instructor_estilo')
+  const databaseIsEmpty = await ensureEmptyDemoDatabase(existingTables)
 
   if (!databaseIsEmpty) {
     return
   }
 
+  const personSeeds = buildPersonSeeds()
   const styles = await seedStyles()
-  const people = await seedPeople()
-  const students = await seedStudents(people)
-  const instructors = await seedInstructors(students)
-  const administrators = await seedAdministrators(people)
-  const users = await seedUsers(people)
   const forms = await seedForms(styles)
   const grades = await seedGrades()
+  const people = hasPeopleTable ? await seedPeople(personSeeds) : []
+  const students = await seedStudents(personSeeds, people, grades, hasPeopleTable)
+  const instructors = await seedInstructors(students, personSeeds, hasPeopleTable)
+  const administrators = await seedAdministrators(
+    personSeeds,
+    people,
+    hasPeopleTable,
+  )
+  const users = await seedUsers(people, hasUsersTable)
+  const instructorStyles = await seedInstructorStyles(
+    instructors,
+    styles,
+    hasInstructorStyleTable,
+  )
   const gradeForms = await seedGradeForms(grades, forms)
   const studentForms = await seedStudentForms(
     students,
@@ -505,8 +645,16 @@ async function main() {
     grades,
     gradeForms,
   )
-  const courses = await seedCourses(instructors, styles)
-  const enrollments = await seedEnrollments(students, courses)
+  const { courses, scheduledCourses } = await seedCourses(
+    instructors,
+    styles,
+    hasScheduledCoursesTable,
+  )
+  const enrollments = await seedEnrollments(
+    students,
+    hasScheduledCoursesTable ? scheduledCourses : courses,
+    hasScheduledCoursesTable,
+  )
 
   console.table({
     personas: people.length,
@@ -514,12 +662,14 @@ async function main() {
     instructores: instructors.length,
     administradores: administrators.length,
     usuarios: users.length,
+    instructor_estilo: instructorStyles.length,
     estilos: styles.length,
     formas: forms.length,
     grados: grades.length,
     grado_forma: gradeForms.length,
     alumno_forma: studentForms.length,
     cursos: courses.length,
+    cursos_agendados: scheduledCourses.length,
     inscripciones: enrollments.length,
   })
 }

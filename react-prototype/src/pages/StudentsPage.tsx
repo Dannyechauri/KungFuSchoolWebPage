@@ -167,7 +167,7 @@ export function StudentsPage() {
         </label>
 
         <label>
-          <span>Cumple requisitos de</span>
+          <span>Grado o requisitos</span>
           <select value={gradeId} onChange={(event) => setGradeId(event.target.value)}>
             <option value="">Cualquier grado</option>
             {gradeOptions.map((grade) => (

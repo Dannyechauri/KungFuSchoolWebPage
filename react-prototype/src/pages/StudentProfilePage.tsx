@@ -94,7 +94,11 @@ export function StudentProfilePage() {
         </div>
         <div>
           <span>Nacimiento</span>
-          <strong>{fullDateFormatter.format(new Date(profile.birthDate))}</strong>
+          <strong>
+            {profile.birthDate
+              ? fullDateFormatter.format(new Date(profile.birthDate))
+              : 'Sin registrar'}
+          </strong>
         </div>
         <div>
           <span>Correo</span>

@@ -35,8 +35,22 @@ async function apiRequest<T>(path: string): Promise<T> {
 export const databaseApi = {
   health: () => apiRequest<DatabaseHealth>('/api/database/health'),
 
+  tables: () => apiRequest<string[]>('/api/database/tables'),
+
   rows: <TRow>(tableName: string, limit = 500) =>
     apiRequest<TRow[]>(
       `/api/database/tables/${encodeURIComponent(tableName)}/rows?limit=${limit}`,
     ),
+
+  optionalRows: async <TRow>(tableName: string, limit = 500) => {
+    try {
+      return await databaseApi.rows<TRow>(tableName, limit)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        return []
+      }
+
+      throw error
+    }
+  },
 }

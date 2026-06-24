@@ -6,16 +6,26 @@ export type DatabaseHealth = {
 
 export type StudentRow = {
   id_alumno: number
+  nombre?: string
+  fecha_nacimiento?: string | null
+  id_grado?: number
+  correo_electronico?: string | null
   numero_matricula: string
   fecha_ingreso: string
+  grupo?: string | null
+  tutor_nombre?: string | null
+  tutor_telefono?: string | null
+  observaciones?: string | null
   activo: boolean
 }
 
 export type InstructorRow = {
   id_instructor: number
-  fecha_contratacion: string
+  nombre?: string
+  fecha_contratacion: string | null
   activo: boolean
   especialidad: string | null
+  cinturon_actual?: string
 }
 
 export type PersonRow = {
@@ -32,11 +42,19 @@ export type PersonRow = {
 
 export type CourseRow = {
   id_curso: number
-  id_instructor: number
   nombre: string
   tema: string
   descripcion: string | null
+  id_instructor?: number
+  fecha_hora?: string
+}
+
+export type ScheduledCourseRow = {
+  id_curso_agendado: number
+  id_curso: number
+  id_instructor: number
   fecha_hora: string
+  activo: boolean
 }
 
 export type StyleRow = {
@@ -75,7 +93,8 @@ export type GradeFormRow = {
 export type EnrollmentRow = {
   id_inscripcion: number
   id_alumno: number
-  id_curso: number
+  id_curso?: number
+  id_curso_agendado?: number
   fecha_inscripcion: string
   estado: 'activa' | 'inactiva' | 'suspendida'
 }
