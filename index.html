@@ -15,7 +15,29 @@
             </div>
         </header>
 
-        <nav class="navbar">
+        <section class="auth-panel card" id="auth-panel">
+            <div class="card-header">Acceso al Sistema</div>
+            <div class="card-body">
+                <form id="login-form" class="auth-form">
+                    <div class="form-group">
+                        <label for="login-email">Correo electrónico</label>
+                        <input type="email" id="login-email" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="login-password">Contraseña</label>
+                        <input type="password" id="login-password" class="form-input" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Iniciar Sesión</button>
+                </form>
+
+                <div id="session-panel" class="session-panel" style="display: none;">
+                    <p class="info-text">Sesión activa: <strong id="session-user-name">--</strong> (<span id="session-user-role">--</span>)</p>
+                    <button id="logout-btn" class="btn btn-secondary">Cerrar Sesión</button>
+                </div>
+            </div>
+        </section>
+
+        <nav class="navbar" id="main-navbar" hidden>
             <div class="nav-content">
                 <button class="nav-btn active" data-section="dashboard">Dashboard</button>
                 <button class="nav-btn" data-section="tables">Tablas</button>
@@ -24,7 +46,7 @@
             </div>
         </nav>
 
-        <main class="main-content">
+        <main class="main-content" id="main-content" hidden>
             <!-- Dashboard Section -->
             <section id="dashboard-section" class="section active">
                 <div class="section-header">
@@ -212,7 +234,7 @@
             </section>
         </main>
 
-        <footer class="footer">
+        <footer class="footer" id="main-footer" hidden>
             <p>&copy; 2026 Escuela de Kung Fu. Todos los derechos reservados.</p>
         </footer>
     </div>

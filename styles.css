@@ -118,6 +118,28 @@ body {
     width: 100%;
 }
 
+.auth-panel {
+    margin: 20px;
+}
+
+.auth-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    align-items: end;
+}
+
+.auth-form .btn {
+    width: 100%;
+}
+
+.session-panel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
 .section {
     display: none;
     animation: fadeIn 0.3s ease-in;

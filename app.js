@@ -12,6 +12,11 @@ const appState = {
     selectedColumns: [],
     gradosOptions: [],
     estilosOptions: [],
+    gradoFormaFormasOptions: [],
+    alumnoFormaAlumnosOptions: [],
+    alumnoFormaFormasOptions: [],
+    selectedRowsRaw: [],
+    sessionUser: null,
     cursosAgendadosOptions: { cursos: [], instructores: [] },
 };
 
@@ -23,12 +28,15 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeApp() {
     loadSettings();
     setupEventListeners();
-    initializeAutoRefresh();
-    checkHealthStatus();
+    initializeSession();
 }
 
 // ==================== Event Listeners ==================== 
 function setupEventListeners() {
+    // Sesion
+    document.getElementById('login-form').addEventListener('submit', handleLogin);
+    document.getElementById('logout-btn').addEventListener('click', handleLogout);
+
     // Navegación
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.addEventListener('click', handleNavigation);
@@ -52,8 +60,124 @@ function setupEventListeners() {
     document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
 }
 
+async function initializeSession() {
+    try {
+        const session = await apiCall('/api/auth/me', {}, { silent: true, skipUnauthorizedHandler: true });
+        setSessionUser(session);
+        switchSection('dashboard');
+        await checkHealthStatus();
+        await loadDashboardStats();
+    } catch (error) {
+        setSessionUser(null);
+    }
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+
+    if (!email) {
+        showToast('Ingresa un correo electrónico válido', 'error');
+        return;
+    }
+
+    try {
+        const session = await apiCall('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email, password }),
+        }, { skipUnauthorizedHandler: true });
+
+        setSessionUser(session);
+        document.getElementById('login-password').value = '';
+        switchSection('dashboard');
+        await checkHealthStatus();
+        await loadDashboardStats();
+        showToast('Sesión iniciada correctamente', 'success');
+    } catch (error) {
+        // Error mostrado por apiCall
+    }
+}
+
+async function handleLogout() {
+    try {
+        await apiCall('/api/auth/logout', { method: 'DELETE' }, { silent: true, skipUnauthorizedHandler: true });
+    } catch (error) {
+        // Ignorar: aun con error local, forzamos salida visual.
+    }
+
+    setSessionUser(null);
+    showToast('Sesión cerrada', 'info');
+}
+
+function setSessionUser(sessionUser) {
+    appState.sessionUser = sessionUser || null;
+    updateAuthUi();
+    applyRolePermissions();
+    initializeAutoRefresh();
+}
+
+function updateAuthUi() {
+    const isAuthenticated = Boolean(appState.sessionUser);
+    const loginForm = document.getElementById('login-form');
+    const sessionPanel = document.getElementById('session-panel');
+    const mainNavbar = document.getElementById('main-navbar');
+    const mainContent = document.getElementById('main-content');
+    const mainFooter = document.getElementById('main-footer');
+
+    loginForm.style.display = isAuthenticated ? 'none' : 'grid';
+    sessionPanel.style.display = isAuthenticated ? 'flex' : 'none';
+    mainNavbar.hidden = !isAuthenticated;
+    mainContent.hidden = !isAuthenticated;
+    mainFooter.hidden = !isAuthenticated;
+
+    if (isAuthenticated) {
+        document.getElementById('session-user-name').textContent = appState.sessionUser.displayName || 'Usuario';
+        document.getElementById('session-user-role').textContent = appState.sessionUser.role === 'ADMIN' ? 'Administrador' : 'Usuario';
+    }
+}
+
+function applyRolePermissions() {
+    const isAdmin = isAdminSession();
+    const migrateNavBtn = document.querySelector('.nav-btn[data-section="migrate"]');
+
+    if (migrateNavBtn) {
+        migrateNavBtn.style.display = isAdmin ? 'inline-block' : 'none';
+    }
+
+    if (!isAdmin) {
+        const activeSection = document.querySelector('.section.active');
+        if (activeSection && activeSection.id === 'migrate-section') {
+            switchSection('dashboard');
+        }
+    }
+
+    document.getElementById('insert-row-btn').style.display = isAdmin ? 'inline-block' : 'none';
+    document.getElementById('execute-migrate-btn').style.display = isAdmin ? 'inline-block' : 'none';
+    document.getElementById('run-migrate-btn').style.display = isAdmin ? 'inline-block' : 'none';
+}
+
+function isAdminSession() {
+    return appState.sessionUser?.role === 'ADMIN';
+}
+
+function canEditCurrentTable() {
+    if (!isAdminSession()) {
+        return false;
+    }
+
+    const nonEditableTables = new Set(['administradores', 'grado_forma', 'alumno_forma', 'instructor_estilo', 'flyway_schema_history']);
+    return !nonEditableTables.has(appState.selectedTable);
+}
+
 // ==================== Navegación ==================== 
 function handleNavigation(e) {
+    if (!appState.sessionUser) {
+        showToast('Inicia sesión para navegar', 'info');
+        return;
+    }
+
     const section = e.target.dataset.section;
     switchSection(section);
 
@@ -63,6 +187,10 @@ function handleNavigation(e) {
 }
 
 function switchSection(sectionName) {
+    if (!appState.sessionUser) {
+        return;
+    }
+
     // Ocultar todas las secciones
     document.querySelectorAll('.section').forEach(section => {
         section.classList.remove('active');
@@ -92,13 +220,15 @@ function switchSection(sectionName) {
 }
 
 // ==================== API Calls ==================== 
-async function apiCall(endpoint, options = {}) {
+async function apiCall(endpoint, options = {}, requestOptions = {}) {
+    const { silent = false, skipUnauthorizedHandler = false } = requestOptions;
     const baseUrl = normalizeApiUrl(appState.apiUrl) || DEFAULT_API_URL;
     const url = `${baseUrl}${endpoint}`;
     const defaultOptions = {
         headers: {
             'Content-Type': 'application/json',
         },
+        credentials: 'include',
         ...options,
     };
 
@@ -106,13 +236,22 @@ async function apiCall(endpoint, options = {}) {
         const response = await fetch(url, defaultOptions);
 
         if (!response.ok) {
+            if (response.status === 401 && !skipUnauthorizedHandler) {
+                setSessionUser(null);
+            }
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        if (response.status === 204) {
+            return null;
         }
 
         return await response.json();
     } catch (error) {
         console.error('API Error:', error);
-        showToast(`Error: ${error.message}`, 'error');
+        if (!silent) {
+            showToast(`Error: ${error.message}`, 'error');
+        }
         throw error;
     }
 }
@@ -167,6 +306,10 @@ async function loadDashboardStats() {
 
 // ==================== Tablas ==================== 
 async function loadTables() {
+    if (!appState.sessionUser) {
+        return;
+    }
+
     try {
         const loading = document.getElementById('tables-loading');
         const table = document.getElementById('tables-table');
@@ -209,6 +352,11 @@ async function loadTables() {
 }
 
 async function openTableData(tableName) {
+    if (!appState.sessionUser) {
+        showToast('Inicia sesión para ver datos', 'info');
+        return;
+    }
+
     try {
         appState.selectedTable = tableName;
         document.getElementById('table-data-panel').style.display = 'block';
@@ -253,6 +401,34 @@ async function openTableData(tableName) {
                 appState.estilosOptions = [];
             }
         }
+
+        // Cargar catalogo de formas para grado_forma
+        if (tableName === 'grado_forma') {
+            try {
+                const formas = await apiCall('/api/database/tables/formas/rows?limit=200');
+                const grados = await apiCall('/api/database/tables/grados/rows?limit=200');
+                appState.gradoFormaFormasOptions = formas || [];
+                appState.gradosOptions = grados || [];
+            } catch (e) {
+                console.warn('No se pudo cargar el catalogo de grados/formas para grado_forma:', e);
+                appState.gradoFormaFormasOptions = [];
+                appState.gradosOptions = [];
+            }
+        }
+
+        // Cargar catalogo de alumnos y formas para alumno_forma
+        if (tableName === 'alumno_forma') {
+            try {
+                const alumnos = await apiCall('/api/database/tables/alumnos/rows?limit=200');
+                const formas = await apiCall('/api/database/tables/formas/rows?limit=200');
+                appState.alumnoFormaAlumnosOptions = alumnos || [];
+                appState.alumnoFormaFormasOptions = formas || [];
+            } catch (e) {
+                console.warn('No se pudo cargar el catalogo de alumnos/formas para alumno_forma:', e);
+                appState.alumnoFormaAlumnosOptions = [];
+                appState.alumnoFormaFormasOptions = [];
+            }
+        }
         
         renderInsertForm(columns);
         await reloadSelectedTableData();
@@ -270,7 +446,36 @@ async function reloadSelectedTableData() {
 
     try {
         const tableName = appState.selectedTable;
-        let rows = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows?limit=100`);
+
+        // Mantener el formulario de grado_forma sincronizado con catalogos actualizados
+        if (tableName === 'grado_forma') {
+            try {
+                const formas = await apiCall('/api/database/tables/formas/rows?limit=200');
+                const grados = await apiCall('/api/database/tables/grados/rows?limit=200');
+                appState.gradoFormaFormasOptions = formas || [];
+                appState.gradosOptions = grados || [];
+                renderInsertForm(appState.selectedColumns);
+            } catch (e) {
+                console.warn('No se pudieron refrescar catalogos de grado_forma:', e);
+            }
+        }
+
+        // Mantener el formulario de alumno_forma sincronizado con catalogos actualizados
+        if (tableName === 'alumno_forma') {
+            try {
+                const alumnos = await apiCall('/api/database/tables/alumnos/rows?limit=200');
+                const formas = await apiCall('/api/database/tables/formas/rows?limit=200');
+                appState.alumnoFormaAlumnosOptions = alumnos || [];
+                appState.alumnoFormaFormasOptions = formas || [];
+                renderInsertForm(appState.selectedColumns);
+            } catch (e) {
+                console.warn('No se pudieron refrescar catalogos de alumno_forma:', e);
+            }
+        }
+
+        const rawRows = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows?limit=100`);
+        appState.selectedRowsRaw = rawRows || [];
+        let rows = rawRows;
         
         // Enriquecer datos para cursos_agendados
         if (tableName === 'cursos_agendados' && rows.length > 0) {
@@ -285,6 +490,16 @@ async function reloadSelectedTableData() {
         // Enriquecer datos para formas
         if (tableName === 'formas' && rows.length > 0) {
             rows = await enrichFormasData(rows);
+        }
+
+        // Enriquecer datos para grado_forma
+        if (tableName === 'grado_forma' && rows.length > 0) {
+            rows = await enrichGradoFormaData(rows);
+        }
+
+        // Enriquecer datos para alumno_forma
+        if (tableName === 'alumno_forma' && rows.length > 0) {
+            rows = await enrichAlumnoFormaData(rows);
         }
         
         renderTableData(rows, appState.selectedColumns);
@@ -368,12 +583,85 @@ async function enrichFormasData(rows) {
     }
 }
 
+async function enrichGradoFormaData(rows) {
+    try {
+        const grados = appState.gradosOptions?.length > 0
+            ? appState.gradosOptions
+            : await apiCall('/api/database/tables/grados/rows?limit=200');
+
+        const formas = appState.gradoFormaFormasOptions?.length > 0
+            ? appState.gradoFormaFormasOptions
+            : await apiCall('/api/database/tables/formas/rows?limit=200');
+
+        const gradoMap = {};
+        const formaMap = {};
+
+        grados.forEach(g => {
+            gradoMap[g.id_grado] = g.nombre || `Grado ${g.id_grado}`;
+        });
+
+        formas.forEach(f => {
+            formaMap[f.id_forma] = f.nombre || `Forma ${f.id_forma}`;
+        });
+
+        return rows.map(row => ({
+            ...row,
+            id_grado: row.id_grado === null || row.id_grado === undefined
+                ? row.id_grado
+                : `${row.id_grado} - ${gradoMap[row.id_grado] || 'Desconocido'}`,
+            id_forma: row.id_forma === null || row.id_forma === undefined
+                ? row.id_forma
+                : `${row.id_forma} - ${formaMap[row.id_forma] || 'Desconocida'}`,
+        }));
+    } catch (e) {
+        console.warn('Error enriqueciendo datos de grado_forma:', e);
+        return rows;
+    }
+}
+
+async function enrichAlumnoFormaData(rows) {
+    try {
+        const alumnos = appState.alumnoFormaAlumnosOptions?.length > 0
+            ? appState.alumnoFormaAlumnosOptions
+            : await apiCall('/api/database/tables/alumnos/rows?limit=200');
+
+        const formas = appState.alumnoFormaFormasOptions?.length > 0
+            ? appState.alumnoFormaFormasOptions
+            : await apiCall('/api/database/tables/formas/rows?limit=200');
+
+        const alumnoMap = {};
+        const formaMap = {};
+
+        alumnos.forEach(a => {
+            alumnoMap[a.id_alumno] = a.nombre || a.numero_matricula || `Alumno ${a.id_alumno}`;
+        });
+
+        formas.forEach(f => {
+            formaMap[f.id_forma] = f.nombre || `Forma ${f.id_forma}`;
+        });
+
+        return rows.map(row => ({
+            ...row,
+            id_alumno: row.id_alumno === null || row.id_alumno === undefined
+                ? row.id_alumno
+                : `${row.id_alumno} - ${alumnoMap[row.id_alumno] || 'Desconocido'}`,
+            id_forma: row.id_forma === null || row.id_forma === undefined
+                ? row.id_forma
+                : `${row.id_forma} - ${formaMap[row.id_forma] || 'Desconocida'}`,
+        }));
+    } catch (e) {
+        console.warn('Error enriqueciendo datos de alumno_forma:', e);
+        return rows;
+    }
+}
+
 function renderTableData(rows, columns) {
     const head = document.getElementById('table-data-head');
     const body = document.getElementById('table-data-body');
     const empty = document.getElementById('table-data-empty');
     const table = document.getElementById('table-data-table');
     const primaryKeyColumn = columns.find(col => col.primaryKey)?.name;
+    const showActions = isAdminSession();
 
     if (rows.length === 0) {
         table.style.display = 'none';
@@ -389,19 +677,36 @@ function renderTableData(rows, columns) {
     head.innerHTML = `
         <tr>
             ${columnNames.map(name => `<th>${name}</th>`).join('')}
-            <th>Acciones</th>
+            ${showActions ? '<th>Acciones</th>' : ''}
         </tr>
     `;
 
-    body.innerHTML = rows.map(row => {
-        const actionBtn = primaryKeyColumn && row[primaryKeyColumn] !== undefined
-            ? `<button class="btn btn-danger btn-sm" onclick="deleteRow('${appState.selectedTable}', '${String(row[primaryKeyColumn]).replace(/'/g, "\\'")}')">Eliminar</button>`
-            : '<span class="text-muted">Sin PK</span>';
+    body.innerHTML = rows.map((row, index) => {
+        const rawRow = appState.selectedRowsRaw[index] || row;
+        const primaryKeyValue = primaryKeyColumn ? rawRow[primaryKeyColumn] : undefined;
+        const actionButtons = [];
+
+        if (showActions && canEditCurrentTable() && primaryKeyColumn && primaryKeyValue !== undefined) {
+            actionButtons.push(`<button class="btn btn-info btn-sm" onclick="editRowByIndex(${index})">Editar</button>`);
+        }
+
+        if (showActions && primaryKeyColumn && primaryKeyValue !== undefined) {
+            actionButtons.push(`<button class="btn btn-danger btn-sm" onclick="deleteRow('${appState.selectedTable}', '${String(primaryKeyValue).replace(/'/g, "\\'")}')">Eliminar</button>`);
+        }
+
+        const actionCell = actionButtons.length > 0
+            ? actionButtons.join(' ')
+            : '<span class="text-muted">Sin acciones</span>';
 
         return `
             <tr>
-                ${columnNames.map(name => `<td>${formatCellValue(row[name])}</td>`).join('')}
-                <td>${actionBtn}</td>
+                ${columnNames.map(name => {
+                    if (appState.selectedTable === 'grado_forma' && name === 'es_opcional') {
+                        return `<td>${row[name] === true ? 'Optativa' : 'Obligatoria'}</td>`;
+                    }
+                    return `<td>${formatCellValue(row[name])}</td>`;
+                }).join('')}
+                ${showActions ? `<td>${actionCell}</td>` : ''}
             </tr>
         `;
     }).join('');
@@ -409,7 +714,23 @@ function renderTableData(rows, columns) {
 
 function renderInsertForm(columns) {
     const form = document.getElementById('insert-row-form');
-    const editableColumns = columns.filter(col => !col.autoGenerated && !col.primaryKey);
+    if (!isAdminSession()) {
+        form.innerHTML = '<p class="info-text">Solo los administradores pueden agregar registros.</p>';
+        return;
+    }
+
+    const editableColumns = columns.filter(col => {
+        if (col.autoGenerated) {
+            return false;
+        }
+
+        // grado_forma usa PK compuesta manual (id_grado + id_forma), por eso deben capturarse en formulario.
+        if (appState.selectedTable === 'grado_forma' || appState.selectedTable === 'alumno_forma') {
+            return true;
+        }
+
+        return !col.primaryKey;
+    });
 
     if (editableColumns.length === 0) {
         form.innerHTML = '<p class="info-text">No hay columnas editables para insertar en esta tabla.</p>';
@@ -463,6 +784,21 @@ function renderInsertForm(columns) {
             `;
         }
 
+        // Manejador especial para id_grado en grado_forma
+        if (appState.selectedTable === 'grado_forma' && col.name === 'id_grado') {
+            const grados = appState.gradosOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Grado (${col.dataType})${isRequired ? ' *' : ''}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un grado</option>
+                        ${grados.map(g => `<option value="${g.id_grado}">${g.nombre || `Grado ${g.id_grado}`}</option>`).join('')}
+                    </select>
+                    <small class="text-muted">Se muestra el nombre del grado, pero se guarda su ID.</small>
+                </div>
+            `;
+        }
+
         // Manejador especial para id_estilo en formas
         if (appState.selectedTable === 'formas' && col.name === 'id_estilo') {
             const estilos = appState.estilosOptions || [];
@@ -473,6 +809,51 @@ function renderInsertForm(columns) {
                         <option value="">Selecciona un estilo</option>
                         ${estilos.map(e => `<option value="${e.id_estilo}">${e.nombre || `Estilo ${e.id_estilo}`}</option>`).join('')}
                     </select>
+                </div>
+            `;
+        }
+
+        // Manejador especial para id_forma en grado_forma
+        if (appState.selectedTable === 'grado_forma' && col.name === 'id_forma') {
+            const formas = appState.gradoFormaFormasOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Forma (${col.dataType})${isRequired ? ' *' : ''}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona una forma</option>
+                        ${formas.map(f => `<option value="${f.id_forma}">${f.nombre || `Forma ${f.id_forma}`}</option>`).join('')}
+                    </select>
+                    <small class="text-muted">Se muestra el nombre de la forma, pero se guarda su ID.</small>
+                </div>
+            `;
+        }
+
+        // Manejador especial para id_alumno en alumno_forma
+        if (appState.selectedTable === 'alumno_forma' && col.name === 'id_alumno') {
+            const alumnos = appState.alumnoFormaAlumnosOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Alumno (${col.dataType})${isRequired ? ' *' : ''}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un alumno</option>
+                        ${alumnos.map(a => `<option value="${a.id_alumno}">${a.nombre || a.numero_matricula || `Alumno ${a.id_alumno}`}</option>`).join('')}
+                    </select>
+                    <small class="text-muted">Se muestra el nombre del alumno, pero se guarda su ID.</small>
+                </div>
+            `;
+        }
+
+        // Manejador especial para id_forma en alumno_forma
+        if (appState.selectedTable === 'alumno_forma' && col.name === 'id_forma') {
+            const formas = appState.alumnoFormaFormasOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Forma (${col.dataType})${isRequired ? ' *' : ''}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona una forma</option>
+                        ${formas.map(f => `<option value="${f.id_forma}">${f.nombre || `Forma ${f.id_forma}`}</option>`).join('')}
+                    </select>
+                    <small class="text-muted">Se muestra el nombre de la forma, pero se guarda su ID.</small>
                 </div>
             `;
         }
@@ -501,6 +882,19 @@ function renderInsertForm(columns) {
                         <option value="inactiva">inactiva</option>
                         <option value="suspendida">suspendida</option>
                     </select>
+                </div>
+            `;
+        }
+
+        // Manejador especial para variante obligatoria/optativa en grado_forma
+        if (appState.selectedTable === 'grado_forma' && col.name === 'es_opcional') {
+            return `
+                <div class="form-group form-group-checkbox">
+                    <label class="checkbox-label" for="field-${col.name}">
+                        <input type="checkbox" id="field-${col.name}" class="form-checkbox" data-column="${col.name}">
+                        Forma optativa
+                    </label>
+                    <small class="text-muted">Si no se marca, la forma se registra como obligatoria.</small>
                 </div>
             `;
         }
@@ -558,14 +952,19 @@ function renderInsertForm(columns) {
             `;
         }
 
-        const inputType = col.name.includes('email')
+        const normalizedColumnName = String(col.name || '').toLowerCase();
+        const isPasswordField = normalizedColumnName.includes('password') || normalizedColumnName.includes('contrasena') || normalizedColumnName.includes('clave');
+        const inputType = normalizedColumnName.includes('password') || normalizedColumnName.includes('contrasena') || normalizedColumnName.includes('clave')
+            ? 'password'
+            : (normalizedColumnName.includes('email') || normalizedColumnName.includes('correo')
             ? 'email'
-            : (col.name.includes('telefono') || col.name.includes('phone') ? 'tel' : (col.name.includes('url') ? 'url' : 'text'));
+            : (normalizedColumnName.includes('telefono') || normalizedColumnName.includes('phone') ? 'tel' : (normalizedColumnName.includes('url') ? 'url' : 'text')));
+        const passwordAttrs = isPasswordField ? ' minlength="7" title="La contraseña debe tener más de 6 caracteres"' : '';
 
         return `
             <div class="form-group">
                 <label for="field-${col.name}">${col.name} (${col.dataType})${isRequired ? ' *' : ''}</label>
-                <input type="${inputType}" id="field-${col.name}" class="form-input" data-column="${col.name}" placeholder="Valor para ${col.name}" ${requiredAttr}>
+                <input type="${inputType}" id="field-${col.name}" class="form-input" data-column="${col.name}" placeholder="Valor para ${col.name}" ${requiredAttr}${passwordAttrs}>
             </div>
         `;
     }).join('');
@@ -593,6 +992,11 @@ function attachNativePickers(container) {
 }
 
 async function insertSelectedTableRow() {
+    if (!isAdminSession()) {
+        showToast('Solo administradores pueden insertar registros', 'error');
+        return;
+    }
+
     if (!appState.selectedTable) {
         showToast('Selecciona una tabla primero', 'info');
         return;
@@ -600,9 +1004,22 @@ async function insertSelectedTableRow() {
 
     const form = document.getElementById('insert-row-form');
     const payload = {};
-    const editableColumns = appState.selectedColumns.filter(col => !col.autoGenerated && !col.primaryKey);
+    const editableColumns = appState.selectedColumns.filter(col => {
+        if (col.autoGenerated) {
+            return false;
+        }
+
+        if (appState.selectedTable === 'grado_forma' || appState.selectedTable === 'alumno_forma') {
+            return true;
+        }
+
+        return !col.primaryKey;
+    });
     const hiddenRequiredColumns = appState.selectedColumns.filter(col => {
         if (col.autoGenerated) {
+            return false;
+        }
+        if (appState.selectedTable === 'grado_forma' || appState.selectedTable === 'alumno_forma') {
             return false;
         }
         if (col.hasDefault) {
@@ -614,6 +1031,7 @@ async function insertSelectedTableRow() {
         return col.primaryKey;
     });
     const missingRequired = [];
+    const invalidPasswordFields = [];
 
     if (hiddenRequiredColumns.length > 0) {
         showToast(`No se puede insertar desde este formulario. Campos ID requeridos: ${hiddenRequiredColumns.map(col => col.name).join(', ')}`, 'error');
@@ -634,6 +1052,8 @@ async function insertSelectedTableRow() {
         }
 
         const rawValue = input.value?.trim();
+        const normalizedColumnName = String(col.name || '').toLowerCase();
+        const isPasswordField = normalizedColumnName.includes('password') || normalizedColumnName.includes('contrasena') || normalizedColumnName.includes('clave');
 
         if (rawValue === '' || rawValue === undefined) {
             // If the column has a DB default, omit it to allow PostgreSQL to apply that default.
@@ -649,6 +1069,11 @@ async function insertSelectedTableRow() {
             } else {
                 payload[col.name] = null;
             }
+            return;
+        }
+
+        if (isPasswordField && rawValue.length <= 6) {
+            invalidPasswordFields.push(col.name);
             return;
         }
 
@@ -682,6 +1107,11 @@ async function insertSelectedTableRow() {
         return;
     }
 
+    if (invalidPasswordFields.length > 0) {
+        showToast(`La contraseña debe tener más de 6 caracteres en: ${invalidPasswordFields.join(', ')}`, 'error');
+        return;
+    }
+
     try {
         await apiCall(`/api/database/tables/${encodeURIComponent(appState.selectedTable)}/rows`, {
             method: 'POST',
@@ -696,7 +1126,74 @@ async function insertSelectedTableRow() {
     }
 }
 
+async function editRowByIndex(rowIndex) {
+    if (!isAdminSession()) {
+        showToast('Solo administradores pueden editar registros', 'error');
+        return;
+    }
+
+    if (!canEditCurrentTable()) {
+        showToast('Esta tabla no permite edicion por politica de permisos', 'error');
+        return;
+    }
+
+    const row = appState.selectedRowsRaw[rowIndex];
+    if (!row) {
+        showToast('No se encontro el registro seleccionado', 'error');
+        return;
+    }
+
+    const primaryKeyColumn = appState.selectedColumns.find(col => col.primaryKey)?.name;
+    if (!primaryKeyColumn || row[primaryKeyColumn] === undefined || row[primaryKeyColumn] === null) {
+        showToast('No se puede editar: la tabla no tiene llave primaria utilizable', 'error');
+        return;
+    }
+
+    const editableColumns = appState.selectedColumns.filter(col => !col.autoGenerated && !col.primaryKey);
+    if (editableColumns.length === 0) {
+        showToast('No hay columnas editables para este registro', 'info');
+        return;
+    }
+
+    const editablePayload = {};
+    editableColumns.forEach(col => {
+        editablePayload[col.name] = row[col.name];
+    });
+
+    const proposedJson = JSON.stringify(editablePayload, null, 2);
+    const userInput = prompt('Edita el JSON del registro (solo columnas editables):', proposedJson);
+
+    if (userInput === null) {
+        return;
+    }
+
+    let updatedPayload;
+    try {
+        updatedPayload = JSON.parse(userInput);
+    } catch (error) {
+        showToast('JSON invalido. No se realizaron cambios.', 'error');
+        return;
+    }
+
+    try {
+        await apiCall(`/api/database/tables/${encodeURIComponent(appState.selectedTable)}/rows/${encodeURIComponent(row[primaryKeyColumn])}`, {
+            method: 'PUT',
+            body: JSON.stringify(updatedPayload),
+        });
+
+        await reloadSelectedTableData();
+        showToast('Registro actualizado correctamente', 'success');
+    } catch (error) {
+        showToast('No se pudo actualizar el registro', 'error');
+    }
+}
+
 async function deleteRow(tableName, id) {
+    if (!isAdminSession()) {
+        showToast('Solo administradores pueden eliminar registros', 'error');
+        return;
+    }
+
     if (!confirm(`¿Eliminar el registro ${id} de ${tableName}?`)) {
         return;
     }
@@ -714,6 +1211,11 @@ async function deleteRow(tableName, id) {
 
 // ==================== Migraciones ==================== 
 async function executeMigrations() {
+    if (!isAdminSession()) {
+        showToast('Solo administradores pueden ejecutar migraciones', 'error');
+        return;
+    }
+
     if (!confirm('¿Está seguro de que desea ejecutar las migraciones? Esto puede modificar la base de datos.')) {
         return;
     }
@@ -801,10 +1303,10 @@ function initializeAutoRefresh() {
         clearInterval(appState.refreshTimerId);
     }
 
-    if (appState.autoRefresh) {
+    if (appState.autoRefresh && appState.sessionUser) {
         appState.refreshTimerId = setInterval(() => {
             const activeSection = document.querySelector('.section.active');
-            if (activeSection.id === 'dashboard-section') {
+            if (activeSection && activeSection.id === 'dashboard-section') {
                 checkHealthStatus();
                 loadDashboardStats();
             }
