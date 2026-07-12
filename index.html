@@ -43,6 +43,8 @@
                 <button class="nav-btn" data-section="tables">Tablas</button>
                 <button class="nav-btn" data-section="migrate">Migraciones</button>
                 <button class="nav-btn" data-section="settings">Configuración</button>
+                <div class="nav-separator"></div>
+                <button class="nav-btn nav-btn-toggle" id="toggle-final-view-btn" title="Vista Final (en construcción)">🏗️ Vista Final</button>
             </div>
         </nav>
 
@@ -237,6 +239,124 @@
         <footer class="footer" id="main-footer" hidden>
             <p>&copy; 2026 Escuela de Kung Fu. Todos los derechos reservados.</p>
         </footer>
+    </div>
+
+    <!-- Vista Final (en construcción) -->
+    <div class="final-view-overlay" id="final-view-overlay">
+        <div class="final-view-container">
+            <div class="final-view-header">
+                <div class="final-view-title">
+                    <span>🥋</span>
+                    <h2>Vista Final — En Construcción</h2>
+                </div>
+                <button class="btn btn-secondary final-view-close-btn" id="close-final-view-btn">✕ Volver a Vista Actual</button>
+            </div>
+
+            <nav class="final-tabs-nav">
+                <button class="final-tab-btn active" data-tab="administradores">Administradores</button>
+                <button class="final-tab-btn" data-tab="cursos">Cursos</button>
+                <button class="final-tab-btn" data-tab="grados">Grados</button>
+                <button class="final-tab-btn" data-tab="formas">Formas</button>
+                <button class="final-tab-btn" data-tab="alumnos">Alumnos</button>
+                <button class="final-tab-btn" data-tab="instructores">Instructores</button>
+                <button class="final-tab-btn" data-tab="estilos">Estilos</button>
+            </nav>
+
+            <div class="final-tabs-content">
+                <div class="final-tab-panel active" id="final-tab-administradores">
+                    <div class="final-tab-view">
+                        <div class="final-tab-toolbar">
+                            <h3>Administradores</h3>
+                            <button class="btn btn-primary" data-table="administradores" onclick="openFinalAddDialog('administradores')">+ Agregar Administrador</button>
+                        </div>
+                        <div class="final-tab-table" id="final-table-administradores">
+                            <div class="loading"><span class="spinner"></span> Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="final-tab-panel" id="final-tab-cursos">
+                    <div class="final-tab-view">
+                        <div class="final-tab-toolbar">
+                            <h3>Cursos</h3>
+                            <button class="btn btn-primary" data-table="cursos" onclick="openFinalAddDialog('cursos')">+ Agregar Curso</button>
+                        </div>
+                        <div class="final-tab-table" id="final-table-cursos">
+                            <div class="loading"><span class="spinner"></span> Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="final-tab-panel" id="final-tab-grados">
+                    <div class="final-tab-view">
+                        <div class="final-tab-toolbar">
+                            <h3>Grados</h3>
+                            <button class="btn btn-primary" data-table="grados" onclick="openFinalAddDialog('grados')">+ Agregar Grado</button>
+                        </div>
+                        <div class="final-tab-table" id="final-table-grados">
+                            <div class="loading"><span class="spinner"></span> Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="final-tab-panel" id="final-tab-formas">
+                    <div class="final-tab-view">
+                        <div class="final-tab-toolbar">
+                            <h3>Formas</h3>
+                            <button class="btn btn-primary" data-table="formas" onclick="openFinalAddDialog('formas')">+ Agregar Forma</button>
+                        </div>
+                        <div class="final-tab-table" id="final-table-formas">
+                            <div class="loading"><span class="spinner"></span> Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="final-tab-panel" id="final-tab-alumnos">
+                    <div class="final-tab-view">
+                        <div class="final-tab-toolbar">
+                            <h3>Alumnos</h3>
+                            <button class="btn btn-primary" data-table="alumnos" onclick="openFinalAddDialog('alumnos')">+ Agregar Alumno</button>
+                        </div>
+                        <div class="final-tab-table" id="final-table-alumnos">
+                            <div class="loading"><span class="spinner"></span> Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="final-tab-panel" id="final-tab-instructores">
+                    <div class="final-tab-view">
+                        <div class="final-tab-toolbar">
+                            <h3>Instructores</h3>
+                            <button class="btn btn-primary" data-table="instructores" onclick="openFinalAddDialog('instructores')">+ Agregar Instructor</button>
+                        </div>
+                        <div class="final-tab-table" id="final-table-instructores">
+                            <div class="loading"><span class="spinner"></span> Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="final-tab-panel" id="final-tab-estilos">
+                    <div class="final-tab-view">
+                        <div class="final-tab-toolbar">
+                            <h3>Estilos</h3>
+                            <button class="btn btn-primary" data-table="estilos" onclick="openFinalAddDialog('estilos')">+ Agregar Estilo</button>
+                        </div>
+                        <div class="final-tab-table" id="final-table-estilos">
+                            <div class="loading"><span class="spinner"></span> Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para agregar elementos en Vista Final -->
+    <div class="final-add-modal" id="final-add-modal" style="display: none;">
+        <div class="final-add-modal-content">
+            <div class="final-add-modal-header">
+                <h3 id="final-add-modal-title">Agregar Elemento</h3>
+                <button class="final-add-modal-close" onclick="closeFinalAddDialog()">✕</button>
+            </div>
+            <form id="final-add-form" class="final-add-form"></form>
+            <div class="final-add-modal-footer">
+                <button class="btn btn-secondary" onclick="closeFinalAddDialog()">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveFinalAddForm()">Guardar</button>
+            </div>
+        </div>
     </div>
 
     <!-- Toast Notifications -->

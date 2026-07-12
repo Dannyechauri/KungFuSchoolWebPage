@@ -1,3 +1,5 @@
+console.log('✓ app.js cargado');
+
 // ==================== Configuración ==================== 
 const DEFAULT_API_URL = 'http://localhost:8080';
 const DEFAULT_REFRESH_INTERVAL = 30; // segundos
@@ -38,8 +40,30 @@ function setupEventListeners() {
     document.getElementById('logout-btn').addEventListener('click', handleLogout);
 
     // Navegación
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.addEventListener('click', handleNavigation);
+    document.querySelectorAll('.nav-btn:not(.nav-btn-toggle)').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            closeFinalView();
+            handleNavigation(e);
+        });
+    });
+
+    // ESC para cerrar vista final o modal
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const modal = document.getElementById('final-add-modal');
+            if (modal && modal.style.display === 'flex') {
+                closeFinalAddDialog();
+            } else {
+                closeFinalView();
+            }
+        }
+    });
+    
+    // Click fuera del modal para cerrar
+    document.getElementById('final-add-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'final-add-modal') {
+            closeFinalAddDialog();
+        }
     });
 
     // Dashboard
@@ -58,6 +82,20 @@ function setupEventListeners() {
 
     // Settings
     document.getElementById('save-settings-btn').addEventListener('click', saveSettings);
+
+    // Vista Final
+    const toggleBtn = document.getElementById('toggle-final-view-btn');
+    const closeBtn = document.getElementById('close-final-view-btn');
+    
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', openFinalView);
+    }
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeFinalView);
+    }
+    document.querySelectorAll('.final-tab-btn').forEach(btn => {
+        btn.addEventListener('click', handleFinalTabClick);
+    });
 }
 
 async function initializeSession() {
@@ -216,6 +254,708 @@ function switchSection(sectionName) {
         loadTables();
     } else if (sectionName === 'settings') {
         loadSettings();
+    }
+}
+
+// ==================== Vista Final ====================
+function openFinalView() {
+    const overlay = document.getElementById('final-view-overlay');
+    const container = document.querySelector('.container');
+    const toastContainer = document.getElementById('toast-container');
+    
+    if (overlay) {
+        overlay.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+        
+        // Ocultar la interfaz anterior
+        if (container) container.style.display = 'none';
+        if (toastContainer) toastContainer.style.display = 'none';
+        
+        // Cargar datos de la primera pestaña
+        loadFinalTabData('administradores');
+    }
+}
+
+function closeFinalView() {
+    const overlay = document.getElementById('final-view-overlay');
+    const container = document.querySelector('.container');
+    const toastContainer = document.getElementById('toast-container');
+    
+    if (overlay) {
+        overlay.style.display = 'none';
+        document.body.style.overflow = '';
+        
+        // Mostrar la interfaz anterior
+        if (container) container.style.display = 'flex';
+        if (toastContainer) toastContainer.style.display = 'flex';
+    }
+}
+
+function handleFinalTabClick(e) {
+    const tabName = e.target.dataset.tab;
+
+    // Cerrar modal si está abierto
+    closeFinalAddDialog();
+
+    document.querySelectorAll('.final-tab-btn').forEach(btn => btn.classList.remove('active'));
+    e.target.classList.add('active');
+
+    document.querySelectorAll('.final-tab-panel').forEach(panel => panel.classList.remove('active'));
+    const panel = document.getElementById(`final-tab-${tabName}`);
+    if (panel) {
+        panel.classList.add('active');
+        loadFinalTabData(tabName);
+    }
+}
+
+// ==================== Final View Data Loading ====================
+const finalViewState = {
+    currentTable: null,
+    currentColumns: [],
+    currentData: [],
+    editingRowId: null,
+    editingMode: false
+};
+
+function getPrimaryKeyField(columns) {
+    const pkColumn = columns.find(col => col.primaryKey);
+    return pkColumn ? pkColumn.name : 'id';
+}
+
+async function loadFinalTabData(tableName) {
+    finalViewState.currentTable = tableName;
+    const tableContainer = document.getElementById(`final-table-${tableName}`);
+    
+    if (!tableContainer) return;
+    
+    try {
+        tableContainer.innerHTML = '<div class="loading"><span class="spinner"></span> Cargando...</div>';
+        
+        // Cargar datos especiales para relaciones foráneas
+        await loadSpecialDataForTable(tableName);
+        
+        // Obtener columnas
+        const columns = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/columns`);
+        finalViewState.currentColumns = columns;
+        
+        // Obtener datos
+        const rows = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows?limit=1000`);
+        finalViewState.currentData = rows || [];
+        
+        renderFinalTable(tableName, columns, rows);
+    } catch (error) {
+        tableContainer.innerHTML = '<div class="final-table-empty"><p>Error al cargar datos</p></div>';
+    }
+}
+
+function getForeignKeyDisplayValue(tableName, columnName, value) {
+    if (value === null || value === undefined) return '—';
+    
+    // Mapeo de id_campo -> opciones y campo de nombre
+    const mappings = {
+        'alumnos': {
+            'id_grado': { options: 'gradosOptions', nameField: 'nombre' }
+        },
+        'formas': {
+            'id_estilo': { options: 'estilosOptions', nameField: 'nombre' }
+        },
+        'grado_forma': {
+            'id_grado': { options: 'gradosOptions', nameField: 'nombre' }
+        },
+        'alumno_forma': {
+            'id_forma': { options: 'formasOptions', nameField: 'nombre' }
+        },
+        'cursos_agendados': {
+            'id_curso': { options: 'cursosOptions', nameField: 'nombre' },
+            'id_instructor': { options: 'instructoresOptions', nameField: 'nombre' }
+        }
+    };
+    
+    // Verificar si este campo necesita mapeo
+    const tableMapping = mappings[tableName];
+    if (!tableMapping || !tableMapping[columnName]) {
+        return String(value).substring(0, 50);
+    }
+    
+    const { options, nameField } = tableMapping[columnName];
+    const optionsArray = appState[options] || [];
+    
+    if (optionsArray.length === 0) {
+        return String(value);
+    }
+    
+    // Verificar estructura de datos - encontrar la propiedad ID correcta
+    const firstItem = optionsArray[0];
+    const idField = Object.keys(firstItem || {}).find(k => k.includes('id') && k !== 'id');
+    const actualIdField = idField || 'id';
+    
+    const item = optionsArray.find(opt => opt[actualIdField] == value || opt.id == value);
+    return item && item[nameField] ? item[nameField] : String(value);
+}
+
+function renderFinalTable(tableName, columns, rows) {
+    const tableContainer = document.getElementById(`final-table-${tableName}`);
+    
+    if (!tableContainer) return;
+    
+    if (!rows || rows.length === 0) {
+        tableContainer.innerHTML = '<div class="final-table-empty"><p>No hay registros disponibles</p></div>';
+        return;
+    }
+    
+    // Filtrar columnas para mostrar (excluir campos muy largos)
+    const displayColumns = columns.filter(col => {
+        const type = String(col.dataType || '').toLowerCase();
+        return !type.includes('text') && !type.includes('json');
+    }).slice(0, 8);
+    
+    const pkField = getPrimaryKeyField(columns);
+    
+    let html = '<table class="final-data-table"><thead><tr>';
+    displayColumns.forEach(col => {
+        html += `<th>${col.name}</th>`;
+    });
+    html += '<th>Acciones</th></tr></thead><tbody>';
+    
+    rows.forEach(row => {
+        const rowId = row[pkField];
+        html += '<tr>';
+        displayColumns.forEach(col => {
+            const value = row[col.name];
+            const displayValue = getForeignKeyDisplayValue(tableName, col.name, value);
+            html += `<td>${displayValue}</td>`;
+        });
+        html += `<td class="final-table-actions">
+                    <button class="final-btn-edit" data-row-id="${rowId}" title="Editar">✏️</button>
+                    <button class="final-btn-delete" data-row-id="${rowId}" title="Eliminar">🗑️</button>
+                 </td>`;
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table>';
+    tableContainer.innerHTML = html;
+    
+    // Agregar event listeners a los botones
+    tableContainer.querySelectorAll('.final-btn-edit').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const rowId = btn.dataset.rowId;
+            const row = rows.find(r => r[pkField] == rowId);
+            if (row) {
+                await openFinalEditDialog(tableName, row);
+            }
+        });
+    });
+    
+    tableContainer.querySelectorAll('.final-btn-delete').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const rowId = btn.dataset.rowId;
+            if (confirm(`¿Estás seguro de que deseas eliminar este registro?`)) {
+                await deleteFinalRow(tableName, rowId, pkField);
+            }
+        });
+    });
+}
+
+// ==================== Final Add Dialog ====================
+async function openFinalAddDialog(tableName) {
+    if (!appState.sessionUser) {
+        showToast('Debes iniciar sesión', 'info');
+        return;
+    }
+    
+    if (!isAdminSession()) {
+        showToast('Solo administradores pueden agregar elementos', 'info');
+        return;
+    }
+    
+    try {
+        // Obtener columnas para el formulario
+        const columns = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/columns`);
+        finalViewState.currentTable = tableName;
+        finalViewState.currentColumns = columns;
+        
+        // Cargar datos especiales si es necesario
+        await loadSpecialDataForTable(tableName);
+        
+        // Generar formulario
+        finalViewState.editingMode = false;
+        finalViewState.editingRowId = null;
+        renderFinalAddForm(columns);
+        
+        // Mostrar modal
+        const modal = document.getElementById('final-add-modal');
+        modal.style.display = 'flex';
+        document.getElementById('final-add-modal-title').textContent = `Agregar a ${tableName}`;
+    } catch (error) {
+        showToast('Error al abrir el formulario', 'error');
+    }
+}
+
+async function openFinalEditDialog(tableName, rowData) {
+    if (!appState.sessionUser) {
+        showToast('Debes iniciar sesión', 'info');
+        return;
+    }
+    
+    if (!isAdminSession()) {
+        showToast('Solo administradores pueden editar elementos', 'info');
+        return;
+    }
+    
+    try {
+        // Obtener columnas para el formulario
+        const columns = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/columns`);
+        finalViewState.currentTable = tableName;
+        finalViewState.currentColumns = columns;
+        
+        // Cargar datos especiales si es necesario
+        await loadSpecialDataForTable(tableName);
+        
+        // Generar formulario en modo edición
+        finalViewState.editingMode = true;
+        const pkField = getPrimaryKeyField(columns);
+        finalViewState.editingRowId = rowData[pkField];
+        renderFinalAddForm(columns, rowData);
+        
+        // Mostrar modal
+        const modal = document.getElementById('final-add-modal');
+        modal.style.display = 'flex';
+        document.getElementById('final-add-modal-title').textContent = `Editar ${tableName}`;
+    } catch (error) {
+        showToast('Error al abrir el formulario de edición', 'error');
+    }
+}
+
+async function deleteFinalRow(tableName, rowId, pkField) {
+    try {
+        await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows/${rowId}`, {
+            method: 'DELETE'
+        });
+        
+        showToast(`✓ Registro eliminado de ${tableName}`, 'success');
+        
+        // Recargar datos
+        await loadFinalTabData(tableName);
+    } catch (error) {
+        console.error('Error al eliminar:', error);
+        showToast(`Error al eliminar: ${error.message || 'Intenta nuevamente'}`, 'error');
+    }
+}
+
+async function loadSpecialDataForTable(tableName) {
+    try {
+        // Cargar datos de lookup para tablas que lo necesiten
+        if (tableName === 'alumnos') {
+            try {
+                const grados = await apiCall('/api/database/tables/grados/rows?limit=100');
+                appState.gradosOptions = grados || [];
+            } catch (e) {
+                appState.gradosOptions = [];
+            }
+        }
+        if (tableName === 'formas') {
+            try {
+                const estilos = await apiCall('/api/database/tables/estilos/rows?limit=100');
+                appState.estilosOptions = estilos || [];
+            } catch (e) {
+                appState.estilosOptions = [];
+            }
+        }
+        if (tableName === 'cursos_agendados') {
+            try {
+                const cursos = await apiCall('/api/database/tables/cursos/rows?limit=100');
+                const instructores = await apiCall('/api/database/tables/instructores/rows?limit=100');
+                appState.cursosAgendadosOptions = { 
+                    cursos: cursos || [], 
+                    instructores: instructores || [] 
+                };
+                appState.cursosOptions = cursos || [];
+                appState.instructoresOptions = instructores || [];
+            } catch (e) {
+                appState.cursosAgendadosOptions = { cursos: [], instructores: [] };
+            }
+        }
+        if (tableName === 'grado_forma') {
+            try {
+                const grados = await apiCall('/api/database/tables/grados/rows?limit=100');
+                const formas = await apiCall('/api/database/tables/formas/rows?limit=100');
+                appState.gradoFormaFormasOptions = formas || [];
+                appState.gradosOptions = grados || [];
+                appState.formasOptions = formas || [];
+            } catch (e) {
+                console.warn('Error cargando datos para grado_forma:', e);
+            }
+        }
+        if (tableName === 'alumno_forma') {
+            try {
+                const alumnos = await apiCall('/api/database/tables/alumnos/rows?limit=100');
+                const formas = await apiCall('/api/database/tables/formas/rows?limit=100');
+                appState.alumnoFormaAlumnosOptions = alumnos || [];
+                appState.alumnoFormaFormasOptions = formas || [];
+                appState.formasOptions = formas || [];
+            } catch (e) {
+                console.warn('Error cargando datos para alumno_forma:', e);
+            }
+        }
+    } catch (e) {
+        console.warn('Error cargando datos especiales para tabla:', tableName, e);
+    }
+}
+
+function renderFinalAddForm(columns, rowData = null) {
+    const form = document.getElementById('final-add-form');
+    
+    const editableColumns = columns.filter(col => {
+        if (col.autoGenerated) return false;
+        if (finalViewState.currentTable === 'grado_forma' || finalViewState.currentTable === 'alumno_forma') return true;
+        return !col.primaryKey;
+    });
+    
+    if (editableColumns.length === 0) {
+        form.innerHTML = '<p class="info-text">No hay columnas editables para esta tabla.</p>';
+        return;
+    }
+    
+    form.innerHTML = editableColumns.map(col => {
+        const dataType = String(col.dataType || '').toLowerCase();
+        const isRequired = !col.nullable && !col.hasDefault;
+        const requiredAttr = isRequired ? 'required' : '';
+        const requiredLabel = isRequired ? '<span class="required-indicator">*</span>' : '';
+        const currentValue = rowData ? rowData[col.name] : null;
+        
+        // Detectar campos booleanos
+        const isBooleanField = dataType.includes('boolean') || dataType.includes('bool') || 
+                               (dataType.includes('tinyint') && dataType.includes('(1)'));
+        
+        if (isBooleanField) {
+            const isChecked = currentValue ? 'checked' : '';
+            return `
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="field-${col.name}" class="form-checkbox" data-column="${col.name}" ${isChecked}>
+                        ${col.name}
+                    </label>
+                </div>
+            `;
+        }
+        
+        // Select para id_grado en alumnos
+        if (finalViewState.currentTable === 'alumnos' && col.name === 'id_grado') {
+            const grados = appState.gradosOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Grado${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un grado</option>
+                        ${grados.map(g => {
+                            const selected = currentValue && g.id_grado == currentValue ? 'selected' : '';
+                            return `<option value="${g.id_grado}" ${selected}>${g.nombre || `Grado ${g.id_grado}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Select para id_estilo en formas
+        if (finalViewState.currentTable === 'formas' && col.name === 'id_estilo') {
+            const estilos = appState.estilosOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Estilo${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un estilo</option>
+                        ${estilos.map(e => {
+                            const selected = currentValue && e.id_estilo == currentValue ? 'selected' : '';
+                            return `<option value="${e.id_estilo}" ${selected}>${e.nombre || `Estilo ${e.id_estilo}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Select para id_grado en grado_forma
+        if (finalViewState.currentTable === 'grado_forma' && col.name === 'id_grado') {
+            const grados = appState.gradosOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Grado${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un grado</option>
+                        ${grados.map(g => {
+                            const selected = currentValue && g.id_grado == currentValue ? 'selected' : '';
+                            return `<option value="${g.id_grado}" ${selected}>${g.nombre || `Grado ${g.id_grado}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Select para id_forma en grado_forma
+        if (finalViewState.currentTable === 'grado_forma' && col.name === 'id_forma') {
+            const formas = appState.gradoFormaFormasOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Forma${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona una forma</option>
+                        ${formas.map(f => {
+                            const selected = currentValue && f.id_forma == currentValue ? 'selected' : '';
+                            return `<option value="${f.id_forma}" ${selected}>${f.nombre || `Forma ${f.id_forma}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Select para id_alumno en alumno_forma
+        if (finalViewState.currentTable === 'alumno_forma' && col.name === 'id_alumno') {
+            const alumnos = appState.alumnoFormaAlumnosOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Alumno${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un alumno</option>
+                        ${alumnos.map(a => {
+                            const selected = currentValue && a.id_alumno == currentValue ? 'selected' : '';
+                            return `<option value="${a.id_alumno}" ${selected}>${a.nombre || `Alumno ${a.id_alumno}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Select para id_forma en alumno_forma
+        if (finalViewState.currentTable === 'alumno_forma' && col.name === 'id_forma') {
+            const formas = appState.alumnoFormaFormasOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Forma${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona una forma</option>
+                        ${formas.map(f => {
+                            const selected = currentValue && f.id_forma == currentValue ? 'selected' : '';
+                            return `<option value="${f.id_forma}" ${selected}>${f.nombre || `Forma ${f.id_forma}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Select para id_curso en cursos_agendados
+        if (finalViewState.currentTable === 'cursos_agendados' && col.name === 'id_curso') {
+            const cursos = appState.cursosAgendadosOptions?.cursos || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Curso${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un curso</option>
+                        ${cursos.map(c => {
+                            const selected = currentValue && c.id_curso == currentValue ? 'selected' : '';
+                            return `<option value="${c.id_curso}" ${selected}>${c.nombre || `Curso ${c.id_curso}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Select para id_instructor en cursos_agendados
+        if (finalViewState.currentTable === 'cursos_agendados' && col.name === 'id_instructor') {
+            const instructores = appState.cursosAgendadosOptions?.instructores || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Instructor${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un instructor</option>
+                        ${instructores.map(i => {
+                            const selected = currentValue && i.id_instructor == currentValue ? 'selected' : '';
+                            return `<option value="${i.id_instructor}" ${selected}>${i.nombre || `Instructor ${i.id_instructor}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Campos de texto
+        if (dataType.includes('varchar') || dataType.includes('char') || dataType.includes('text')) {
+            const value = currentValue || '';
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">${col.name}${requiredLabel}</label>
+                    <input type="text" id="field-${col.name}" class="form-input" data-column="${col.name}" value="${value}" ${requiredAttr}>
+                </div>
+            `;
+        }
+        
+        // Select para id_forma en alumno_forma
+        if (finalViewState.currentTable === 'alumno_forma' && col.name === 'id_forma') {
+            const formas = appState.alumnoFormaFormasOptions || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Forma${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona una forma</option>
+                        ${formas.map(f => {
+                            const selected = currentValue && f.id_forma == currentValue ? 'selected' : '';
+                            return `<option value="${f.id_forma}" ${selected}>${f.nombre || `Forma ${f.id_forma}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Select para id_curso en cursos_agendados
+        if (finalViewState.currentTable === 'cursos_agendados' && col.name === 'id_curso') {
+            const cursos = appState.cursosAgendadosOptions?.cursos || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Curso${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un curso</option>
+                        ${cursos.map(c => {
+                            const selected = currentValue && c.id_curso == currentValue ? 'selected' : '';
+                            return `<option value="${c.id_curso}" ${selected}>${c.nombre || `Curso ${c.id_curso}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Select para id_instructor en cursos_agendados
+        if (finalViewState.currentTable === 'cursos_agendados' && col.name === 'id_instructor') {
+            const instructores = appState.cursosAgendadosOptions?.instructores || [];
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">Instructor${requiredLabel}</label>
+                    <select id="field-${col.name}" class="form-input" data-column="${col.name}" ${requiredAttr}>
+                        <option value="">Selecciona un instructor</option>
+                        ${instructores.map(i => {
+                            const selected = currentValue && i.id_instructor == currentValue ? 'selected' : '';
+                            return `<option value="${i.id_instructor}" ${selected}>${i.nombre || `Instructor ${i.id_instructor}`}</option>`;
+                        }).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        // Campos numéricos
+        if (dataType.includes('int') || dataType.includes('decimal') || dataType.includes('float')) {
+            const value = currentValue || '';
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">${col.name}${requiredLabel}</label>
+                    <input type="number" id="field-${col.name}" class="form-input" data-column="${col.name}" value="${value}" ${requiredAttr}>
+                </div>
+            `;
+        }
+        
+        // Campos de fecha
+        if (dataType.includes('date') || dataType.includes('timestamp')) {
+            const value = currentValue || '';
+            return `
+                <div class="form-group">
+                    <label for="field-${col.name}">${col.name}${requiredLabel}</label>
+                    <input type="date" id="field-${col.name}" class="form-input" data-column="${col.name}" value="${value}" ${requiredAttr}>
+                </div>
+            `;
+        }
+        
+        // Por defecto
+        const value = currentValue || '';
+        return `
+            <div class="form-group">
+                <label for="field-${col.name}">${col.name}${requiredLabel}</label>
+                <input type="text" id="field-${col.name}" class="form-input" data-column="${col.name}" value="${value}" ${requiredAttr}>
+            </div>
+        `;
+    }).join('');
+}
+
+function closeFinalAddDialog() {
+    const modal = document.getElementById('final-add-modal');
+    modal.style.display = 'none';
+    document.getElementById('final-add-form').innerHTML = '';
+    finalViewState.currentTable = null;
+    finalViewState.editingMode = false;
+    finalViewState.editingRowId = null;
+}
+
+async function saveFinalAddForm() {
+    const tableName = finalViewState.currentTable;
+    
+    if (!tableName) {
+        showToast('Error: no hay tabla seleccionada', 'error');
+        return;
+    }
+    
+    const form = document.getElementById('final-add-form');
+    const inputs = form.querySelectorAll('[data-column]');
+    
+    const rowData = {};
+    let isValid = true;
+    const missingFields = [];
+    
+    inputs.forEach(input => {
+        const colName = input.dataset.column;
+        
+        // Limpiar estilos previos
+        input.style.borderColor = '';
+        input.parentElement.style.backgroundColor = '';
+        
+        if (input.type === 'checkbox') {
+            rowData[colName] = input.checked;
+        } else {
+            const value = input.value.trim();
+            
+            if (input.hasAttribute('required') && !value) {
+                isValid = false;
+                missingFields.push(colName);
+                input.style.borderColor = 'var(--danger-color)';
+                input.style.borderWidth = '2px';
+                input.parentElement.style.backgroundColor = '#ffebee';
+            } else {
+                input.style.borderColor = '';
+                rowData[colName] = value || null;
+            }
+        }
+    });
+    
+    if (!isValid) {
+        const errorMsg = `Campos obligatorios faltantes:\n\n• ${missingFields.join('\n• ')}`;
+        showToast(errorMsg, 'error');
+        return;
+    }
+    
+    try {
+        let response;
+        let successMsg;
+        
+        if (finalViewState.editingMode) {
+            // Modo edición - PUT
+            const rowId = finalViewState.editingRowId;
+            response = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows/${rowId}`, {
+                method: 'PUT',
+                body: JSON.stringify(rowData)
+            });
+            successMsg = `✓ Elemento actualizado en ${tableName}`;
+        } else {
+            // Modo agregar - POST
+            response = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows`, {
+                method: 'POST',
+                body: JSON.stringify(rowData)
+            });
+            successMsg = `✓ Elemento agregado a ${tableName}`;
+        }
+        
+        showToast(successMsg, 'success');
+        closeFinalAddDialog();
+        
+        // Recargar datos completos para asegurar sincronización
+        setTimeout(() => {
+            loadFinalTabData(tableName);
+        }, 500);
+    } catch (error) {
+        console.error('Error al guardar:', error);
+        showToast(`Error al guardar: ${error.message || 'Intenta nuevamente'}`, 'error');
     }
 }
 
