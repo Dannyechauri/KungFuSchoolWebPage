@@ -2,6 +2,9 @@ const API_URL = (process.env.VITE_API_URL ?? 'http://localhost:8080').replace(
   /\/$/,
   '',
 )
+const DEMO_ADMIN_EMAIL = process.env.DEMO_ADMIN_EMAIL ?? 'admin.demo@iwushu.local'
+const DEMO_ADMIN_PASSWORD = process.env.DEMO_ADMIN_PASSWORD ?? 'password'
+let authCookie = ''
 
 const firstNames = [
   'Adriana',
@@ -172,9 +175,17 @@ function slug(value) {
 
 async function request(path, options = {}) {
   const response = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authCookie ? { Cookie: authCookie } : {}),
+    },
     ...options,
   })
+
+  const setCookie = response.headers.get('set-cookie')
+  if (setCookie) {
+    authCookie = setCookie.split(';')[0]
+  }
 
   if (!response.ok) {
     const body = await response.text()
@@ -182,6 +193,25 @@ async function request(path, options = {}) {
   }
 
   return response.json()
+}
+
+async function loginDemoAdmin() {
+  try {
+    await request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: DEMO_ADMIN_EMAIL,
+        password: DEMO_ADMIN_PASSWORD,
+      }),
+    })
+    console.log(`Sesión demo iniciada como ${DEMO_ADMIN_EMAIL}`)
+  } catch (error) {
+    if (String(error.message).includes('404')) {
+      return
+    }
+
+    throw error
+  }
 }
 
 function rows(tableName) {
@@ -204,7 +234,6 @@ async function ensureEmptyDemoDatabase(existingTables) {
     'personas',
     'alumnos',
     'instructores',
-    'administradores',
     'usuarios',
     'formas',
     'grado_forma',
@@ -609,6 +638,7 @@ async function seedEnrollments(students, courseTargets, hasScheduledCoursesTable
 
 async function main() {
   console.log(`Generando datos demo mediante ${API_URL}...`)
+  await loginDemoAdmin()
   const existingTables = await tables()
   const hasPeopleTable = existingTables.includes('personas')
   const hasUsersTable = existingTables.includes('usuarios')

@@ -28,6 +28,20 @@ export type InstructorRow = {
   cinturon_actual?: string
 }
 
+export type AdministratorRow = {
+  id_administrador: number
+  nombre: string
+  rfc: string | null
+  fecha_inicio: string
+  correo_electronico?: string | null
+  password_hash?: string | null
+}
+
+export type InstructorStyleRow = {
+  id_instructor: number
+  id_estilo: number
+}
+
 export type PersonRow = {
   id_persona: number
   nombre: string

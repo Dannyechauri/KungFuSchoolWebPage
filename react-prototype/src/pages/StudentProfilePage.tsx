@@ -1,7 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
-import type { CSSProperties } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
+import type { CSSProperties, FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ApiError } from '../api/databaseApi'
+import { ApiError, databaseApi } from '../api/databaseApi'
 import { getStudentProfile } from '../features/students/studentsService'
 
 const fullDateFormatter = new Intl.DateTimeFormat('es-ES', {
@@ -21,10 +22,93 @@ const courseDateFormatter = new Intl.DateTimeFormat('es-ES', {
 export function StudentProfilePage() {
   const { studentId = '' } = useParams()
   const numericStudentId = Number(studentId)
+  const queryClient = useQueryClient()
+  const [saveMessage, setSaveMessage] = useState<string | null>(null)
+  const [formMessage, setFormMessage] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({
+    nombre: '',
+    correo_electronico: '',
+    fecha_nacimiento: '',
+    fecha_ingreso: '',
+    numero_matricula: '',
+    id_grado: '',
+    grupo: '',
+    tutor_nombre: '',
+    tutor_telefono: '',
+    observaciones: '',
+    activo: true,
+    password_hash: '',
+  })
+  const [learnedForm, setLearnedForm] = useState({
+    id_forma: '',
+    fecha_aprendida: new Date().toISOString().slice(0, 10),
+  })
   const profileQuery = useQuery({
     queryKey: ['student-profile', numericStudentId],
     queryFn: () => getStudentProfile(numericStudentId),
     enabled: Number.isFinite(numericStudentId),
+  })
+
+  useEffect(() => {
+    if (!profileQuery.data) return
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- la ficha remota debe rehidratar el formulario editable al cambiar de alumno.
+    setEditForm({
+      nombre: profileQuery.data.fullName,
+      correo_electronico: profileQuery.data.email ?? '',
+      fecha_nacimiento: profileQuery.data.birthDate ?? '',
+      fecha_ingreso: profileQuery.data.joinedAt,
+      numero_matricula: profileQuery.data.enrollmentNumber,
+      id_grado: profileQuery.data.currentGradeId
+        ? String(profileQuery.data.currentGradeId)
+        : '',
+      grupo: profileQuery.data.group ?? '',
+      tutor_nombre: profileQuery.data.tutorName ?? '',
+      tutor_telefono: profileQuery.data.tutorPhone ?? '',
+      observaciones: profileQuery.data.observations ?? '',
+      activo: profileQuery.data.active,
+      password_hash: '',
+    })
+  }, [profileQuery.data])
+
+  const refreshStudentData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['student-profile', numericStudentId] }),
+      queryClient.invalidateQueries({ queryKey: ['students-directory'] }),
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      queryClient.invalidateQueries({ queryKey: ['knowledge-directory'] }),
+    ])
+  }
+
+  const updateStudentMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      databaseApi.update('alumnos', numericStudentId, payload),
+    onSuccess: async () => {
+      setSaveMessage('Ficha actualizada.')
+      await refreshStudentData()
+    },
+    onError: (error) => {
+      setSaveMessage(
+        error instanceof Error ? error.message : 'No se ha podido actualizar la ficha.',
+      )
+    },
+  })
+
+  const addKnownFormMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      databaseApi.insert('alumno_forma', payload),
+    onSuccess: async () => {
+      setFormMessage('Forma marcada como aprendida.')
+      setLearnedForm((current) => ({ ...current, id_forma: '' }))
+      await refreshStudentData()
+    },
+    onError: (error) => {
+      setFormMessage(
+        error instanceof Error
+          ? error.message
+          : 'No se ha podido registrar la forma aprendida.',
+      )
+    },
   })
 
   if (profileQuery.isPending) {
@@ -63,6 +147,49 @@ export function StudentProfilePage() {
     styleForms.push(form)
     formsByStyle.set(form.style, styleForms)
   })
+  const knownFormIds = new Set(profile.knownForms.map((form) => form.id))
+  const availableForms = profile.formOptions.filter((form) => !knownFormIds.has(form.id))
+
+  function handleSaveStudent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSaveMessage(null)
+
+    const payload: Record<string, unknown> = {
+      nombre: editForm.nombre.trim(),
+      correo_electronico: editForm.correo_electronico.trim() || null,
+      fecha_nacimiento: editForm.fecha_nacimiento || null,
+      fecha_ingreso: editForm.fecha_ingreso,
+      numero_matricula: editForm.numero_matricula.trim(),
+      id_grado: editForm.id_grado ? Number(editForm.id_grado) : null,
+      grupo: editForm.grupo.trim() || null,
+      tutor_nombre: editForm.tutor_nombre.trim() || null,
+      tutor_telefono: editForm.tutor_telefono.trim() || null,
+      observaciones: editForm.observaciones.trim() || null,
+      activo: editForm.activo,
+    }
+
+    if (editForm.password_hash.trim()) {
+      payload.password_hash = editForm.password_hash.trim()
+    }
+
+    updateStudentMutation.mutate(payload)
+  }
+
+  function handleAddKnownForm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setFormMessage(null)
+
+    if (!learnedForm.id_forma) {
+      setFormMessage('Selecciona una forma.')
+      return
+    }
+
+    addKnownFormMutation.mutate({
+      id_alumno: numericStudentId,
+      id_forma: Number(learnedForm.id_forma),
+      fecha_aprendida: learnedForm.fecha_aprendida,
+    })
+  }
 
   return (
     <div className="student-profile-page">
@@ -114,6 +241,180 @@ export function StudentProfilePage() {
         </div>
       </section>
 
+      <section className="content-panel management-panel">
+        <div className="section-heading">
+          <div>
+            <p className="page-kicker">Edición</p>
+            <h2>Ficha académica</h2>
+          </div>
+          <span className="status-badge active">Admin</span>
+        </div>
+        <form className="management-form" onSubmit={handleSaveStudent}>
+          <label>
+            <span>Nombre</span>
+            <input
+              value={editForm.nombre}
+              onChange={(event) =>
+                setEditForm((current) => ({ ...current, nombre: event.target.value }))
+              }
+              required
+            />
+          </label>
+          <label>
+            <span>Matrícula</span>
+            <input
+              value={editForm.numero_matricula}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  numero_matricula: event.target.value,
+                }))
+              }
+              required
+            />
+          </label>
+          <label>
+            <span>Correo</span>
+            <input
+              type="email"
+              value={editForm.correo_electronico}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  correo_electronico: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Nacimiento</span>
+            <input
+              type="date"
+              value={editForm.fecha_nacimiento}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  fecha_nacimiento: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Ingreso</span>
+            <input
+              type="date"
+              value={editForm.fecha_ingreso}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  fecha_ingreso: event.target.value,
+                }))
+              }
+              required
+            />
+          </label>
+          <label>
+            <span>Grado actual</span>
+            <select
+              value={editForm.id_grado}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  id_grado: event.target.value,
+                }))
+              }
+              required
+            >
+              <option value="">Sin grado</option>
+              {profile.gradeOptions.map((grade) => (
+                <option value={grade.id} key={grade.id}>
+                  {grade.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Grupo</span>
+            <input
+              value={editForm.grupo}
+              onChange={(event) =>
+                setEditForm((current) => ({ ...current, grupo: event.target.value }))
+              }
+            />
+          </label>
+          <label>
+            <span>Tutor</span>
+            <input
+              value={editForm.tutor_nombre}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  tutor_nombre: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Teléfono tutor</span>
+            <input
+              value={editForm.tutor_telefono}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  tutor_telefono: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Nueva contraseña</span>
+            <input
+              type="password"
+              value={editForm.password_hash}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  password_hash: event.target.value,
+                }))
+              }
+              placeholder="Opcional, mínimo 7 caracteres"
+            />
+          </label>
+          <label className="management-checkbox">
+            <input
+              type="checkbox"
+              checked={editForm.activo}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  activo: event.target.checked,
+                }))
+              }
+            />
+            Alumno activo
+          </label>
+          <label className="management-wide">
+            <span>Observaciones</span>
+            <textarea
+              value={editForm.observaciones}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  observaciones: event.target.value,
+                }))
+              }
+              rows={3}
+            />
+          </label>
+          <div className="management-actions">
+            <button type="submit" disabled={updateStudentMutation.isPending}>
+              {updateStudentMutation.isPending ? 'Guardando…' : 'Guardar ficha'}
+            </button>
+            {saveMessage ? <span>{saveMessage}</span> : null}
+          </div>
+        </form>
+      </section>
+
       <div className="profile-columns">
         <section className="content-panel">
           <div className="section-heading">
@@ -145,6 +446,45 @@ export function StudentProfilePage() {
               ))}
             </div>
           )}
+          <form className="inline-management-form" onSubmit={handleAddKnownForm}>
+            <h3>Registrar forma aprendida</h3>
+            <label>
+              <span>Forma</span>
+              <select
+                value={learnedForm.id_forma}
+                onChange={(event) =>
+                  setLearnedForm((current) => ({
+                    ...current,
+                    id_forma: event.target.value,
+                  }))
+                }
+              >
+                <option value="">Selecciona forma</option>
+                {availableForms.map((form) => (
+                  <option value={form.id} key={form.id}>
+                    {form.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Fecha</span>
+              <input
+                type="date"
+                value={learnedForm.fecha_aprendida}
+                onChange={(event) =>
+                  setLearnedForm((current) => ({
+                    ...current,
+                    fecha_aprendida: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <button type="submit" disabled={addKnownFormMutation.isPending}>
+              Añadir forma
+            </button>
+            {formMessage ? <p>{formMessage}</p> : null}
+          </form>
         </section>
 
         <section className="content-panel">

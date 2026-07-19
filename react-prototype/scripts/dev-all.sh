@@ -20,8 +20,11 @@ DB_USER="${DB_USER:-$(id -un)}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
 FRONTEND_PORT="${FRONTEND_PORT:-8000}"
-API_URL="${VITE_API_URL:-http://localhost:$BACKEND_PORT}"
+API_URL="${VITE_API_URL:-http://127.0.0.1:$BACKEND_PORT}"
 FRONTEND_URL="http://127.0.0.1:$FRONTEND_PORT"
+DEMO_ADMIN_EMAIL="${DEMO_ADMIN_EMAIL:-admin.demo@iwushu.local}"
+DEMO_ADMIN_PASSWORD="${DEMO_ADMIN_PASSWORD:-password}"
+DEMO_ADMIN_PASSWORD_HASH="${DEMO_ADMIN_PASSWORD_HASH:-\$2a\$10\$chyCUl5Pkd4regJanpaenODRCcd45eVzuVqct1ltLs249If/2rUNK}"
 BACKEND_PID=""
 BACKEND_LOG="${TMPDIR:-/tmp}/kungfu-backend-$$.log"
 
@@ -32,6 +35,10 @@ info() {
 fail() {
   printf '\n[error] %s\n' "$1" >&2
   exit 1
+}
+
+sql_escape() {
+  printf "%s" "$1" | sed "s/'/''/g"
 }
 
 cleanup() {
@@ -183,7 +190,30 @@ start_backend() {
 
 seed_demo_data() {
   info "Comprobando datos de demostración..."
-  (cd "$ROOT_DIR" && VITE_API_URL="$API_URL" npm run seed:demo -- --if-empty)
+  (cd "$ROOT_DIR" && \
+    VITE_API_URL="$API_URL" \
+    DEMO_ADMIN_EMAIL="$DEMO_ADMIN_EMAIL" \
+    DEMO_ADMIN_PASSWORD="$DEMO_ADMIN_PASSWORD" \
+      npm run seed:demo -- --if-empty)
+}
+
+bootstrap_demo_admin() {
+  info "Preparando administrador demo para desarrollo..."
+  local admin_email_sql
+  local password_hash_sql
+  admin_email_sql="$(sql_escape "$DEMO_ADMIN_EMAIL")"
+  password_hash_sql="$(sql_escape "$DEMO_ADMIN_PASSWORD_HASH")"
+
+  PGPASSWORD="$DB_PASSWORD" psql \
+    -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
+    -v ON_ERROR_STOP=1 \
+    -c "INSERT INTO administradores (nombre, fecha_inicio, correo_electronico, password_hash)
+        SELECT 'Administrador Demo', CURRENT_DATE, '$admin_email_sql', '$password_hash_sql'
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM administradores
+          WHERE LOWER(correo_electronico) = LOWER('$admin_email_sql')
+        );" >/dev/null
 }
 
 start_frontend() {
@@ -205,5 +235,6 @@ check_requirements
 install_frontend_dependencies
 ensure_database
 start_backend
+bootstrap_demo_admin
 seed_demo_data
 start_frontend

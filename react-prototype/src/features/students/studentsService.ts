@@ -64,6 +64,7 @@ export type StudentCourse = {
 export type StudentProfile = {
   id: number
   fullName: string
+  currentGradeId: number | null
   enrollmentNumber: string
   joinedAt: string
   active: boolean
@@ -71,9 +72,15 @@ export type StudentProfile = {
   email: string | null
   phone: string | null
   address: string | null
+  group: string | null
+  tutorName: string | null
+  tutorPhone: string | null
+  observations: string | null
   knownForms: StudentKnownForm[]
   gradeProgress: StudentGradeProgress[]
   courses: StudentCourse[]
+  formOptions: StudentFilterOption[]
+  gradeOptions: StudentFilterOption[]
 }
 
 function personFullName(person?: PersonRow) {
@@ -358,6 +365,7 @@ export async function getStudentProfile(
   return {
     id: student.id_alumno,
     fullName: studentFullName(student, person),
+    currentGradeId: student.id_grado ?? null,
     enrollmentNumber: student.numero_matricula,
     joinedAt: student.fecha_ingreso,
     active: student.activo,
@@ -365,8 +373,18 @@ export async function getStudentProfile(
     email: studentEmail(student, person),
     phone: person?.telefono ?? student.tutor_telefono ?? null,
     address: person?.direccion ?? null,
+    group: student.grupo ?? null,
+    tutorName: student.tutor_nombre ?? null,
+    tutorPhone: student.tutor_telefono ?? null,
+    observations: student.observaciones ?? null,
     knownForms,
     gradeProgress,
     courses: studentCourses,
+    formOptions: forms
+      .map((form) => ({ id: form.id_forma, name: form.nombre }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'es')),
+    gradeOptions: grades
+      .sort((a, b) => a.orden_grado - b.orden_grado)
+      .map((grade) => ({ id: grade.id_grado, name: grade.nombre })),
   }
 }

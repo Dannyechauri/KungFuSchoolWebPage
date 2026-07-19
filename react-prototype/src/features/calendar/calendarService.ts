@@ -9,6 +9,7 @@ import type {
 
 export type CalendarCourse = {
   id: number
+  courseId: number
   name: string
   topic: string
   description: string | null
@@ -88,6 +89,7 @@ export async function getCalendarDirectory(): Promise<CalendarDirectory> {
         return [
           {
             id: scheduledCourse.id_curso_agendado,
+            courseId: course.id_curso,
             name: course.nombre,
             topic: course.tema,
             description: course.descripcion,
@@ -108,6 +110,7 @@ export async function getCalendarDirectory(): Promise<CalendarDirectory> {
         return [
           {
             id: course.id_curso,
+            courseId: course.id_curso,
             name: course.nombre,
             topic: course.tema,
             description: course.descripcion,

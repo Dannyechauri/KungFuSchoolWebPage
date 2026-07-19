@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import type { FormEvent } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ApiError } from '../api/databaseApi'
+import { ApiError, databaseApi } from '../api/databaseApi'
 import {
   getStudentsDirectory,
   type StudentSummary,
 } from '../features/students/studentsService'
+import type { StudentRow } from '../types/database'
 
 type StudentStatus = 'all' | 'active' | 'inactive'
 type StudentSort = 'name' | 'recent' | 'forms'
@@ -43,14 +45,53 @@ function StudentsSkeleton() {
 }
 
 export function StudentsPage() {
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<StudentStatus>('all')
   const [formId, setFormId] = useState('')
   const [gradeId, setGradeId] = useState('')
   const [sort, setSort] = useState<StudentSort>('name')
+  const [createMessage, setCreateMessage] = useState<string | null>(null)
+  const [newStudent, setNewStudent] = useState({
+    nombre: '',
+    correo_electronico: '',
+    fecha_nacimiento: '',
+    numero_matricula: '',
+    fecha_ingreso: new Date().toISOString().slice(0, 10),
+    id_grado: '',
+    grupo: '',
+    password_hash: '',
+  })
   const studentsQuery = useQuery({
     queryKey: ['students-directory'],
     queryFn: getStudentsDirectory,
+  })
+
+  const createStudentMutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      databaseApi.insert<StudentRow>('alumnos', payload),
+    onSuccess: async (student) => {
+      setCreateMessage(`Alumno creado: ${student.nombre ?? student.numero_matricula}`)
+      setNewStudent({
+        nombre: '',
+        correo_electronico: '',
+        fecha_nacimiento: '',
+        numero_matricula: '',
+        fecha_ingreso: new Date().toISOString().slice(0, 10),
+        id_grado: '',
+        grupo: '',
+        password_hash: '',
+      })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['students-directory'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      ])
+    },
+    onError: (error) => {
+      setCreateMessage(
+        error instanceof Error ? error.message : 'No se ha podido crear el alumno.',
+      )
+    },
   })
 
   const filteredStudents = useMemo(() => {
@@ -115,6 +156,28 @@ export function StudentsPage() {
   const { students, formOptions, gradeOptions } = studentsQuery.data
   const activeStudents = students.filter((student) => student.active).length
 
+  function handleCreateStudent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setCreateMessage(null)
+
+    const payload: Record<string, unknown> = {
+      nombre: newStudent.nombre.trim(),
+      correo_electronico: newStudent.correo_electronico.trim() || null,
+      fecha_nacimiento: newStudent.fecha_nacimiento || null,
+      numero_matricula: newStudent.numero_matricula.trim(),
+      fecha_ingreso: newStudent.fecha_ingreso,
+      id_grado: Number(newStudent.id_grado),
+      grupo: newStudent.grupo.trim() || null,
+      activo: true,
+    }
+
+    if (newStudent.password_hash.trim()) {
+      payload.password_hash = newStudent.password_hash.trim()
+    }
+
+    createStudentMutation.mutate(payload)
+  }
+
   return (
     <div className="students-page">
       <header className="page-header">
@@ -130,6 +193,136 @@ export function StudentsPage() {
           <p>Los filtros se calculan con la información actual de la escuela.</p>
         </div>
       </header>
+
+      <section className="content-panel management-panel">
+        <div className="section-heading">
+          <div>
+            <p className="page-kicker">Alta rápida</p>
+            <h2>Crear alumno</h2>
+          </div>
+          {createMessage ? <span>{createMessage}</span> : null}
+        </div>
+        <form className="management-form" onSubmit={handleCreateStudent}>
+          <label>
+            <span>Nombre</span>
+            <input
+              value={newStudent.nombre}
+              onChange={(event) =>
+                setNewStudent((current) => ({
+                  ...current,
+                  nombre: event.target.value,
+                }))
+              }
+              required
+            />
+          </label>
+          <label>
+            <span>Matrícula</span>
+            <input
+              value={newStudent.numero_matricula}
+              onChange={(event) =>
+                setNewStudent((current) => ({
+                  ...current,
+                  numero_matricula: event.target.value,
+                }))
+              }
+              placeholder="IW-2026-041"
+              required
+            />
+          </label>
+          <label>
+            <span>Correo</span>
+            <input
+              type="email"
+              value={newStudent.correo_electronico}
+              onChange={(event) =>
+                setNewStudent((current) => ({
+                  ...current,
+                  correo_electronico: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Nacimiento</span>
+            <input
+              type="date"
+              value={newStudent.fecha_nacimiento}
+              onChange={(event) =>
+                setNewStudent((current) => ({
+                  ...current,
+                  fecha_nacimiento: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Ingreso</span>
+            <input
+              type="date"
+              value={newStudent.fecha_ingreso}
+              onChange={(event) =>
+                setNewStudent((current) => ({
+                  ...current,
+                  fecha_ingreso: event.target.value,
+                }))
+              }
+              required
+            />
+          </label>
+          <label>
+            <span>Grado</span>
+            <select
+              value={newStudent.id_grado}
+              onChange={(event) =>
+                setNewStudent((current) => ({
+                  ...current,
+                  id_grado: event.target.value,
+                }))
+              }
+              required
+            >
+              <option value="">Selecciona grado</option>
+              {gradeOptions.map((grade) => (
+                <option value={grade.id} key={grade.id}>
+                  {grade.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Grupo</span>
+            <input
+              value={newStudent.grupo}
+              onChange={(event) =>
+                setNewStudent((current) => ({
+                  ...current,
+                  grupo: event.target.value,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>Contraseña inicial</span>
+            <input
+              type="password"
+              value={newStudent.password_hash}
+              onChange={(event) =>
+                setNewStudent((current) => ({
+                  ...current,
+                  password_hash: event.target.value,
+                }))
+              }
+              placeholder="Opcional"
+            />
+          </label>
+          <div className="management-actions">
+            <button type="submit" disabled={createStudentMutation.isPending}>
+              {createStudentMutation.isPending ? 'Creando…' : 'Crear alumno'}
+            </button>
+          </div>
+        </form>
+      </section>
 
       <section className="student-filters" aria-label="Filtros de alumnos">
         <label className="search-field">

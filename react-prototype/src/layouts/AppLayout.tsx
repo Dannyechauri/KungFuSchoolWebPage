@@ -1,15 +1,19 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { API_URL } from '../config'
 import { ZodiacCarousel } from '../components/ZodiacCarousel'
+import { useAuth } from '../features/auth/authContext'
 
 const navigation = [
   { to: '/', label: 'Panel', marker: '01', end: true },
   { to: '/alumnos', label: 'Alumnos', marker: '02' },
   { to: '/agenda', label: 'Agenda', marker: '03' },
   { to: '/conocimiento', label: 'Conocimiento', marker: '04' },
+  { to: '/equipo', label: 'Equipo', marker: '05' },
 ]
 
 export function AppLayout() {
+  const { session, logout } = useAuth()
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -43,6 +47,13 @@ export function AppLayout() {
           <span className="sidebar-line" />
           <p>Gestión académica</p>
           <small>{API_URL.replace(/^https?:\/\//, '')}</small>
+          <div className="session-chip">
+            <strong>{session.displayName}</strong>
+            <span>{session.role === 'ADMIN' ? 'Administrador' : 'Usuario'}</span>
+            <button type="button" onClick={() => void logout()}>
+              Salir
+            </button>
+          </div>
         </div>
       </aside>
 
