@@ -1304,6 +1304,278 @@ body {
     background: var(--gray-50);
 }
 
+/* ==================== Instructor Profile Modal ==================== */
+.instructor-profile-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(33, 33, 33, 0.58);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 324;
+    padding: 20px;
+}
+
+.instructor-profile-modal-content {
+    width: min(980px, 100%);
+    max-height: 92vh;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.instructor-profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--gray-200);
+    background: linear-gradient(135deg, #fff8e1 0%, #ffffff 70%);
+}
+
+.instructor-profile-header h3 {
+    margin: 0;
+    font-size: 1.35rem;
+    color: var(--gray-900);
+}
+
+.instructor-profile-subtitle {
+    margin: 6px 0 0;
+    color: var(--gray-700);
+    font-size: 0.95rem;
+}
+
+.instructor-profile-close {
+    border: none;
+    background: transparent;
+    color: var(--gray-700);
+    cursor: pointer;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-size: 1.25rem;
+}
+
+.instructor-profile-close:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.instructor-profile-menu {
+    display: flex;
+    gap: 10px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.instructor-profile-menu-btn {
+    border: 1px solid var(--gray-300);
+    background: white;
+    color: var(--gray-700);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.instructor-profile-menu-btn.active {
+    border-color: #ef6c00;
+    color: #ef6c00;
+    background: #fff3e0;
+}
+
+.instructor-profile-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.instructor-profile-panel {
+    display: none;
+}
+
+.instructor-profile-panel.active {
+    display: block;
+}
+
+.instructor-profile-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.instructor-profile-info-item {
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 12px;
+    background: #fafafa;
+}
+
+.instructor-profile-info-label {
+    display: block;
+    color: var(--gray-700);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+    margin-bottom: 6px;
+}
+
+.instructor-profile-info-value {
+    color: var(--gray-900);
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.instructor-profile-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+
+/* ==================== Style Profile Modal ==================== */
+.style-profile-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(33, 33, 33, 0.58);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 323;
+    padding: 20px;
+}
+
+.style-profile-modal-content {
+    width: min(920px, 100%);
+    max-height: 92vh;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.style-profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--gray-200);
+    background: linear-gradient(135deg, #ede7f6 0%, #ffffff 70%);
+}
+
+.style-profile-header h3 {
+    margin: 0;
+    font-size: 1.35rem;
+    color: var(--gray-900);
+}
+
+.style-profile-subtitle {
+    margin: 6px 0 0;
+    color: var(--gray-700);
+    font-size: 0.95rem;
+}
+
+.style-profile-close {
+    border: none;
+    background: transparent;
+    color: var(--gray-700);
+    cursor: pointer;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-size: 1.25rem;
+}
+
+.style-profile-close:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.style-profile-menu {
+    display: flex;
+    gap: 10px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.style-profile-menu-btn {
+    border: 1px solid var(--gray-300);
+    background: white;
+    color: var(--gray-700);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.style-profile-menu-btn.active {
+    border-color: #5e35b1;
+    color: #5e35b1;
+    background: #ede7f6;
+}
+
+.style-profile-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.style-profile-panel {
+    display: none;
+}
+
+.style-profile-panel.active {
+    display: block;
+}
+
+.style-profile-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.style-profile-info-item {
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 12px;
+    background: #fafafa;
+}
+
+.style-profile-info-label {
+    display: block;
+    color: var(--gray-700);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+    margin-bottom: 6px;
+}
+
+.style-profile-info-value {
+    color: var(--gray-900);
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.style-profile-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+
 /* ==================== Form Profile Modal ==================== */
 .form-profile-modal {
     position: fixed;
@@ -1684,6 +1956,42 @@ body {
         overflow-x: auto;
     }
 
+    .instructor-profile-modal {
+        padding: 10px;
+    }
+
+    .instructor-profile-modal-content {
+        max-height: 96vh;
+    }
+
+    .instructor-profile-header,
+    .instructor-profile-body {
+        padding: 16px;
+    }
+
+    .instructor-profile-menu {
+        padding: 10px 12px;
+        overflow-x: auto;
+    }
+
+    .style-profile-modal {
+        padding: 10px;
+    }
+
+    .style-profile-modal-content {
+        max-height: 96vh;
+    }
+
+    .style-profile-header,
+    .style-profile-body {
+        padding: 16px;
+    }
+
+    .style-profile-menu {
+        padding: 10px 12px;
+        overflow-x: auto;
+    }
+
     .form-profile-modal {
         padding: 10px;
     }
@@ -1748,6 +2056,10 @@ body {
     .grade-known-form-item {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .instructor-profile-footer {
+        justify-content: stretch;
     }
 }
 

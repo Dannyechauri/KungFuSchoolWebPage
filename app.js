@@ -13,6 +13,9 @@ function getDefaultFinalViewSortPreferences() {
         formStudents: { sortKey: 'name', sortDirection: 'asc' },
         gradeStudents: { sortKey: 'name', sortDirection: 'asc' },
         gradeForms: { sortKey: 'name', sortDirection: 'asc' },
+        instructorForms: { sortKey: 'name', sortDirection: 'asc' },
+        instructorCourses: { sortKey: 'name', sortDirection: 'asc' },
+        styleInstructors: { sortKey: 'name', sortDirection: 'asc' },
     };
 }
 
@@ -33,6 +36,9 @@ function loadFinalViewSortPreferences() {
             formStudents: { ...defaults.formStudents, ...(parsed?.formStudents || {}) },
             gradeStudents: { ...defaults.gradeStudents, ...(parsed?.gradeStudents || {}) },
             gradeForms: { ...defaults.gradeForms, ...(parsed?.gradeForms || {}) },
+            instructorForms: { ...defaults.instructorForms, ...(parsed?.instructorForms || {}) },
+            instructorCourses: { ...defaults.instructorCourses, ...(parsed?.instructorCourses || {}) },
+            styleInstructors: { ...defaults.styleInstructors, ...(parsed?.styleInstructors || {}) },
             tables: parsed?.tables && typeof parsed.tables === 'object' ? parsed.tables : {},
         };
     } catch (error) {
@@ -87,6 +93,9 @@ const appState = {
     alumnoFormaFormasOptions: [],
     selectedRowsRaw: [],
     sessionUser: null,
+    currentUserStudentName: '',
+    hasStudentProfile: null,
+    hasInstructorProfile: null,
     cursosAgendadosOptions: { cursos: [], instructores: [] },
 };
 
@@ -118,12 +127,18 @@ function setupEventListeners() {
     // ESC para cerrar vista final o modal
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
+            const styleModal = document.getElementById('style-profile-modal');
+            const instructorModal = document.getElementById('instructor-profile-modal');
             const gradeModal = document.getElementById('grade-profile-modal');
             const formModal = document.getElementById('form-profile-modal');
             const studentModal = document.getElementById('student-profile-modal');
             const modal = document.getElementById('final-add-modal');
 
-            if (gradeModal && gradeModal.style.display === 'flex') {
+            if (styleModal && styleModal.style.display === 'flex') {
+                closeStyleProfileModal();
+            } else if (instructorModal && instructorModal.style.display === 'flex') {
+                closeInstructorProfileModal();
+            } else if (gradeModal && gradeModal.style.display === 'flex') {
                 closeGradeProfileModal();
             } else if (formModal && formModal.style.display === 'flex') {
                 closeFormProfileModal();
@@ -176,6 +191,8 @@ function setupEventListeners() {
     });
 
     setupStudentProfileEventListeners();
+    setupInstructorProfileEventListeners();
+    setupStyleProfileEventListeners();
     setupFormProfileEventListeners();
     setupGradeProfileEventListeners();
 }
@@ -233,9 +250,42 @@ async function handleLogout() {
 
 function setSessionUser(sessionUser) {
     appState.sessionUser = sessionUser || null;
+    appState.currentUserStudentName = '';
+    appState.hasStudentProfile = null;
+    appState.hasInstructorProfile = null;
     updateAuthUi();
     applyRolePermissions();
+    if (appState.sessionUser && !isAdminSession()) {
+        ensureSessionProfileAccessResolved();
+    }
     initializeAutoRefresh();
+}
+
+async function ensureSessionProfileAccessResolved(forceRefresh = false) {
+    if (!appState.sessionUser || isAdminSession()) {
+        return;
+    }
+
+    const alreadyResolved = appState.hasStudentProfile !== null && appState.hasInstructorProfile !== null;
+    if (alreadyResolved && !forceRefresh) {
+        return;
+    }
+
+    try {
+        const studentsRows = await apiCall('/api/database/tables/alumnos/rows?limit=3000', {}, { silent: true });
+        const ownStudents = getSessionScopedRows('alumnos', studentsRows || []);
+        appState.hasStudentProfile = ownStudents.length > 0;
+
+        const instructorsRows = await apiCall('/api/database/tables/instructores/rows?limit=3000', {}, { silent: true });
+        const ownInstructors = getSessionScopedRows('instructores', instructorsRows || []);
+        appState.hasInstructorProfile = ownInstructors.length > 0;
+    } catch (error) {
+        console.warn('No se pudo resolver acceso por perfil de sesión:', error);
+        appState.hasStudentProfile = false;
+        appState.hasInstructorProfile = false;
+    }
+
+    applyFinalViewPermissions();
 }
 
 function updateAuthUi() {
@@ -261,14 +311,29 @@ function updateAuthUi() {
 function applyRolePermissions() {
     const isAdmin = isAdminSession();
     const migrateNavBtn = document.querySelector('.nav-btn[data-section="migrate"]');
+    const tablesNavBtn = document.querySelector('.nav-btn[data-section="tables"]');
+    const settingsNavBtn = document.querySelector('.nav-btn[data-section="settings"]');
+    const viewTablesBtn = document.getElementById('view-tables-btn');
 
     if (migrateNavBtn) {
         migrateNavBtn.style.display = isAdmin ? 'inline-block' : 'none';
     }
 
+    if (tablesNavBtn) {
+        tablesNavBtn.style.display = isAdmin ? 'inline-block' : 'none';
+    }
+
+    if (settingsNavBtn) {
+        settingsNavBtn.style.display = isAdmin ? 'inline-block' : 'none';
+    }
+
+    if (viewTablesBtn) {
+        viewTablesBtn.style.display = isAdmin ? 'inline-block' : 'none';
+    }
+
     if (!isAdmin) {
         const activeSection = document.querySelector('.section.active');
-        if (activeSection && activeSection.id === 'migrate-section') {
+        if (activeSection && (activeSection.id === 'migrate-section' || activeSection.id === 'tables-section' || activeSection.id === 'settings-section')) {
             switchSection('dashboard');
         }
     }
@@ -276,10 +341,111 @@ function applyRolePermissions() {
     document.getElementById('insert-row-btn').style.display = isAdmin ? 'inline-block' : 'none';
     document.getElementById('execute-migrate-btn').style.display = isAdmin ? 'inline-block' : 'none';
     document.getElementById('run-migrate-btn').style.display = isAdmin ? 'inline-block' : 'none';
+
+    applyFinalViewPermissions();
 }
 
 function isAdminSession() {
     return appState.sessionUser?.role === 'ADMIN';
+}
+
+function getAllowedFinalTabsForSession() {
+    if (!appState.sessionUser) {
+        return [];
+    }
+
+    if (isAdminSession()) {
+        return ['administradores', 'cursos', 'grados', 'formas', 'alumnos', 'instructores', 'estilos'];
+    }
+
+    const allowedTabs = [];
+
+    if (appState.hasStudentProfile) {
+        allowedTabs.push('alumnos');
+    }
+
+    if (appState.hasInstructorProfile) {
+        allowedTabs.push('instructores');
+    }
+
+    if (allowedTabs.length === 0 && (appState.hasStudentProfile === null || appState.hasInstructorProfile === null)) {
+        return ['alumnos', 'instructores'];
+    }
+
+    return allowedTabs;
+}
+
+function isFinalTabAllowedForSession(tabName) {
+    return getAllowedFinalTabsForSession().includes(tabName);
+}
+
+function getSessionScopedRows(tableName, rows) {
+    if (isAdminSession()) {
+        return rows;
+    }
+
+    const userId = Number(appState.sessionUser?.userId);
+    if (!Number.isFinite(userId)) {
+        return [];
+    }
+
+    if (tableName === 'alumnos') {
+        const ownStudents = (rows || []).filter(row => Number(row.id_alumno) === userId);
+        if (ownStudents[0]?.nombre) {
+            appState.currentUserStudentName = String(ownStudents[0].nombre).trim();
+        }
+        return ownStudents;
+    }
+
+    if (tableName === 'instructores') {
+        const byId = (rows || []).filter(row => Number(row.id_instructor) === userId);
+        if (byId.length > 0) {
+            return byId;
+        }
+
+        const normalizedExpectedName = String(appState.currentUserStudentName || appState.sessionUser?.displayName || '').trim().toLowerCase();
+        if (!normalizedExpectedName) {
+            return [];
+        }
+
+        return (rows || []).filter(row => String(row.nombre || '').trim().toLowerCase() === normalizedExpectedName);
+    }
+
+    return [];
+}
+
+function applyFinalViewPermissions() {
+    const allowedTabs = getAllowedFinalTabsForSession();
+    const canMutate = isAdminSession();
+
+    document.querySelectorAll('.final-tab-btn').forEach(btn => {
+        const tabName = btn.dataset.tab;
+        btn.style.display = allowedTabs.includes(tabName) ? 'inline-block' : 'none';
+    });
+
+    document.querySelectorAll('.final-tab-panel').forEach(panel => {
+        const panelId = panel.id || '';
+        const tabName = panelId.replace('final-tab-', '');
+        panel.style.display = allowedTabs.includes(tabName) ? '' : 'none';
+    });
+
+    document.querySelectorAll('.final-tab-toolbar [data-table]').forEach(addBtn => {
+        addBtn.style.display = canMutate ? 'inline-block' : 'none';
+    });
+
+    const activeTabBtn = document.querySelector('.final-tab-btn.active');
+    const activeTabName = activeTabBtn?.dataset?.tab;
+    if (activeTabName && !allowedTabs.includes(activeTabName)) {
+        const firstAllowed = allowedTabs[0];
+        if (firstAllowed) {
+            document.querySelectorAll('.final-tab-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.tab === firstAllowed);
+            });
+            document.querySelectorAll('.final-tab-panel').forEach(panel => {
+                panel.classList.toggle('active', panel.id === `final-tab-${firstAllowed}`);
+            });
+        }
+    }
 }
 
 function canEditCurrentTable() {
@@ -340,12 +506,15 @@ function switchSection(sectionName) {
 }
 
 // ==================== Vista Final ====================
-function openFinalView() {
+async function openFinalView() {
     const overlay = document.getElementById('final-view-overlay');
     const container = document.querySelector('.container');
     const toastContainer = document.getElementById('toast-container');
     
     if (overlay) {
+        await ensureSessionProfileAccessResolved();
+        applyFinalViewPermissions();
+
         overlay.style.display = 'flex';
         document.body.style.overflow = 'hidden';
         
@@ -353,8 +522,25 @@ function openFinalView() {
         if (container) container.style.display = 'none';
         if (toastContainer) toastContainer.style.display = 'none';
         
-        // Cargar datos de la primera pestaña
-        loadFinalTabData('administradores');
+        const allowedTabs = getAllowedFinalTabsForSession();
+        const initialTab = allowedTabs[0] || 'alumnos';
+
+        if (allowedTabs.length === 0) {
+            showToast('Tu usuario no tiene perfil de alumno ni de instructor para consultar', 'info');
+            closeFinalView();
+            return;
+        }
+
+        document.querySelectorAll('.final-tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === initialTab);
+        });
+
+        document.querySelectorAll('.final-tab-panel').forEach(panel => {
+            panel.classList.toggle('active', panel.id === `final-tab-${initialTab}`);
+        });
+
+        // Cargar datos de la primera pestaña permitida
+        loadFinalTabData(initialTab);
     }
 }
 
@@ -375,6 +561,11 @@ function closeFinalView() {
 
 function handleFinalTabClick(e) {
     const tabName = e.target.dataset.tab;
+
+    if (!isFinalTabAllowedForSession(tabName)) {
+        showToast('No tienes permisos para esa seccion', 'info');
+        return;
+    }
 
     // Cerrar modal si está abierto
     closeFinalAddDialog();
@@ -402,6 +593,8 @@ const finalViewState = {
     editingRowId: null,
     editingMode: false,
     selectedStudent: null,
+    selectedInstructor: null,
+    selectedStyle: null,
     selectedForm: null,
     selectedGrade: null,
     studentForms: {
@@ -434,6 +627,32 @@ const finalViewState = {
         selectorOpen: false,
         sortKey: initialFinalViewSortPreferences.gradeForms.sortKey,
         sortDirection: initialFinalViewSortPreferences.gradeForms.sortDirection,
+    },
+    instructorForms: {
+        forms: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        relationMode: 'unknown',
+        sortKey: initialFinalViewSortPreferences.instructorForms.sortKey,
+        sortDirection: initialFinalViewSortPreferences.instructorForms.sortDirection,
+    },
+    instructorCourses: {
+        courses: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        sortKey: initialFinalViewSortPreferences.instructorCourses.sortKey,
+        sortDirection: initialFinalViewSortPreferences.instructorCourses.sortDirection,
+    },
+    styleInstructors: {
+        instructors: [],
+        links: [],
+        loaded: false,
+        sortKey: initialFinalViewSortPreferences.styleInstructors.sortKey,
+        sortDirection: initialFinalViewSortPreferences.styleInstructors.sortDirection,
     },
 };
 
@@ -514,6 +733,14 @@ function buildCompositeRowId(row, pkFields) {
 }
 
 async function loadFinalTabData(tableName) {
+    if (!isFinalTabAllowedForSession(tableName)) {
+        const tableContainer = document.getElementById(`final-table-${tableName}`);
+        if (tableContainer) {
+            tableContainer.innerHTML = '<div class="final-table-empty"><p>No tienes permisos para ver esta seccion</p></div>';
+        }
+        return;
+    }
+
     finalViewState.currentTable = tableName;
     const tableContainer = document.getElementById(`final-table-${tableName}`);
     
@@ -531,9 +758,10 @@ async function loadFinalTabData(tableName) {
         
         // Obtener datos
         const rows = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows?limit=1000`);
-        finalViewState.currentData = rows || [];
+        const scopedRows = getSessionScopedRows(tableName, rows || []);
+        finalViewState.currentData = scopedRows;
         
-        renderFinalTable(tableName, columns, rows);
+        renderFinalTable(tableName, columns, scopedRows);
     } catch (error) {
         tableContainer.innerHTML = '<div class="final-table-empty"><p>Error al cargar datos</p></div>';
     }
@@ -617,17 +845,22 @@ function renderFinalTable(tableName, columns, rows) {
         }
     }
     
+    const canMutate = isAdminSession();
+
     let html = '<table class="final-data-table"><thead><tr>';
     displayColumns.forEach(col => {
         const isActiveSort = tableSort.column === col.name;
         const sortIndicator = isActiveSort ? getSortIndicator(tableSort.direction) : '';
         html += `<th class="final-sortable-header" data-sort-column="${col.name}" title="Ordenar por ${col.name}">${col.name}${sortIndicator}</th>`;
     });
-    html += '<th>Acciones</th></tr></thead><tbody>';
+    if (canMutate) {
+        html += '<th>Acciones</th>';
+    }
+    html += '</tr></thead><tbody>';
     
     sortedRows.forEach(row => {
         const rowId = buildCompositeRowId(row, pkFields) || row[pkField];
-        const isProfileClickableTable = tableName === 'alumnos' || tableName === 'formas' || tableName === 'grados';
+        const isProfileClickableTable = tableName === 'alumnos' || tableName === 'instructores' || tableName === 'estilos' || tableName === 'formas' || tableName === 'grados';
         const rowClass = isProfileClickableTable ? ' class="final-row-clickable"' : '';
         const rowDataAttr = isProfileClickableTable ? ` data-row-id="${rowId}"` : '';
 
@@ -637,10 +870,12 @@ function renderFinalTable(tableName, columns, rows) {
             const displayValue = getForeignKeyDisplayValue(tableName, col.name, value);
             html += `<td>${displayValue}</td>`;
         });
-        html += `<td class="final-table-actions">
-                    <button class="final-btn-edit" data-row-id="${rowId}" title="Editar">✏️</button>
-                    <button class="final-btn-delete" data-row-id="${rowId}" title="Eliminar">🗑️</button>
-                 </td>`;
+        if (canMutate) {
+            html += `<td class="final-table-actions">
+                        <button class="final-btn-edit" data-row-id="${rowId}" title="Editar">✏️</button>
+                        <button class="final-btn-delete" data-row-id="${rowId}" title="Eliminar">🗑️</button>
+                    </td>`;
+        }
         html += '</tr>';
     });
     
@@ -648,31 +883,33 @@ function renderFinalTable(tableName, columns, rows) {
     tableContainer.innerHTML = html;
     
     // Agregar event listeners a los botones
-    tableContainer.querySelectorAll('.final-btn-edit').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const rowId = btn.dataset.rowId;
-            const row = sortedRows.find(r => {
-                const currentRowId = buildCompositeRowId(r, pkFields) || r[pkField];
-                return String(currentRowId) === String(rowId);
+    if (canMutate) {
+        tableContainer.querySelectorAll('.final-btn-edit').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const rowId = btn.dataset.rowId;
+                const row = sortedRows.find(r => {
+                    const currentRowId = buildCompositeRowId(r, pkFields) || r[pkField];
+                    return String(currentRowId) === String(rowId);
+                });
+                if (row) {
+                    await openFinalEditDialog(tableName, row);
+                }
             });
-            if (row) {
-                await openFinalEditDialog(tableName, row);
-            }
         });
-    });
-    
-    tableContainer.querySelectorAll('.final-btn-delete').forEach(btn => {
-        btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const rowId = btn.dataset.rowId;
-            if (confirm(`¿Estás seguro de que deseas eliminar este registro?`)) {
-                await deleteFinalRow(tableName, rowId, pkField);
-            }
+        
+        tableContainer.querySelectorAll('.final-btn-delete').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const rowId = btn.dataset.rowId;
+                if (confirm(`¿Estás seguro de que deseas eliminar este registro?`)) {
+                    await deleteFinalRow(tableName, rowId, pkField);
+                }
+            });
         });
-    });
+    }
 
-    if (tableName === 'alumnos' || tableName === 'formas' || tableName === 'grados') {
+    if (tableName === 'alumnos' || tableName === 'instructores' || tableName === 'estilos' || tableName === 'formas' || tableName === 'grados') {
         tableContainer.querySelectorAll('tbody tr.final-row-clickable').forEach(tr => {
             tr.addEventListener('click', async () => {
                 const rowId = tr.dataset.rowId;
@@ -687,6 +924,16 @@ function renderFinalTable(tableName, columns, rows) {
 
                 if (tableName === 'alumnos') {
                     await openStudentProfileModal(selectedRow);
+                    return;
+                }
+
+                if (tableName === 'instructores') {
+                    await openInstructorProfileModal(selectedRow);
+                    return;
+                }
+
+                if (tableName === 'estilos') {
+                    await openStyleProfileModal(selectedRow);
                     return;
                 }
 
@@ -710,6 +957,259 @@ function renderFinalTable(tableName, columns, rows) {
             toggleTableSort(tableName, columnName);
         });
     });
+}
+
+async function openStyleProfileModal(styleRow) {
+    const modal = document.getElementById('style-profile-modal');
+    if (!modal) return;
+
+    finalViewState.selectedStyle = styleRow;
+    finalViewState.styleInstructors = {
+        instructors: [],
+        links: [],
+        loaded: false,
+        sortKey: finalViewState.sortPreferences.styleInstructors.sortKey,
+        sortDirection: finalViewState.sortPreferences.styleInstructors.sortDirection,
+    };
+
+    const styleName = styleRow.nombre || `Estilo ${styleRow.id_estilo}`;
+    document.getElementById('style-profile-title').textContent = styleName;
+    document.getElementById('style-profile-subtitle').textContent = `ID: ${styleRow.id_estilo} · Detalles e instructores que lo enseñan`;
+
+    const editBtn = document.getElementById('style-edit-btn');
+    if (editBtn) {
+        editBtn.style.display = isAdminSession() ? 'inline-block' : 'none';
+    }
+
+    renderStyleInfoPanel(styleRow);
+    switchStyleProfilePanel('info');
+    modal.style.display = 'flex';
+}
+
+function closeStyleProfileModal() {
+    const modal = document.getElementById('style-profile-modal');
+    if (!modal) return;
+
+    modal.style.display = 'none';
+    finalViewState.selectedStyle = null;
+    finalViewState.styleInstructors = {
+        instructors: [],
+        links: [],
+        loaded: false,
+        sortKey: finalViewState.sortPreferences.styleInstructors.sortKey,
+        sortDirection: finalViewState.sortPreferences.styleInstructors.sortDirection,
+    };
+
+    const instructorsList = document.getElementById('style-instructors-list');
+    if (instructorsList) {
+        instructorsList.innerHTML = '';
+    }
+}
+
+function renderStyleInfoPanel(styleRow) {
+    const panel = document.getElementById('style-panel-info');
+    if (!panel) return;
+
+    const labels = {
+        id_estilo: 'ID Estilo',
+        nombre: 'Nombre',
+        descripcion: 'Descripcion',
+    };
+
+    const entries = Object.entries(styleRow || {});
+    panel.innerHTML = `
+        <div class="style-profile-info-grid">
+            ${entries.map(([field, value]) => {
+                const label = labels[field] || field;
+                const normalizedValue = value === null || value === undefined || value === '' ? '—' : String(value);
+                return `
+                    <div class="style-profile-info-item">
+                        <span class="style-profile-info-label">${label}</span>
+                        <span class="style-profile-info-value">${normalizedValue}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function switchStyleProfilePanel(panelName) {
+    document.querySelectorAll('.style-profile-menu-btn').forEach(btn => {
+        if (btn.dataset.panel === panelName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    document.querySelectorAll('.style-profile-panel').forEach(panel => {
+        panel.classList.remove('active');
+    });
+
+    const panel = document.getElementById(`style-panel-${panelName}`);
+    if (panel) {
+        panel.classList.add('active');
+    }
+}
+
+async function loadStyleInstructorsPanel() {
+    const loading = document.getElementById('style-instructors-loading');
+    const listContainer = document.getElementById('style-instructors-list');
+    const selectedStyle = finalViewState.selectedStyle;
+
+    if (!listContainer || !selectedStyle) return;
+    if (finalViewState.styleInstructors.loaded) return;
+
+    try {
+        loading.style.display = 'flex';
+        listContainer.innerHTML = '';
+
+        const [instructorsRows, instructorEstiloRows] = await Promise.all([
+            apiCall('/api/database/tables/instructores/rows?limit=3000'),
+            apiCall('/api/database/tables/instructor_estilo/rows?limit=3000'),
+        ]);
+
+        finalViewState.styleInstructors = {
+            instructors: instructorsRows || [],
+            links: (instructorEstiloRows || []).filter(link => String(link.id_estilo) === String(selectedStyle.id_estilo)),
+            loaded: true,
+            sortKey: finalViewState.styleInstructors.sortKey || finalViewState.sortPreferences.styleInstructors.sortKey,
+            sortDirection: finalViewState.styleInstructors.sortDirection || finalViewState.sortPreferences.styleInstructors.sortDirection,
+        };
+
+        renderStyleInstructorsList();
+    } catch (error) {
+        listContainer.innerHTML = '<p class="text-muted">No se pudo cargar la lista de instructores.</p>';
+        showToast('No se pudieron cargar los instructores de este estilo', 'error');
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function renderStyleInstructorsList() {
+    const listContainer = document.getElementById('style-instructors-list');
+    const styleInstructorsState = finalViewState.styleInstructors;
+
+    if (!listContainer) return;
+
+    const instructorsById = {};
+    (styleInstructorsState.instructors || []).forEach(instructor => {
+        instructorsById[String(instructor.id_instructor)] = instructor;
+    });
+
+    const instructorItems = (styleInstructorsState.links || []).map(link => {
+        const instructor = instructorsById[String(link.id_instructor)];
+        const name = instructor?.nombre || `Instructor ${link.id_instructor}`;
+        const specialty = instructor?.especialidad || 'Sin especialidad';
+
+        return {
+            id_instructor: link.id_instructor,
+            nombre: name,
+            especialidad: specialty,
+        };
+    });
+
+    const sortKey = styleInstructorsState.sortKey || 'name';
+    const sortDirection = styleInstructorsState.sortDirection || 'asc';
+    const sortedInstructors = sortListByDirection(instructorItems, sortDirection, item => {
+        if (sortKey === 'specialty') return item.especialidad;
+        return item.nombre;
+    });
+
+    const nameLabel = `Instructor${sortKey === 'name' ? getSortIndicator(sortDirection) : ''}`;
+    const specialtyLabel = `Especialidad${sortKey === 'specialty' ? getSortIndicator(sortDirection) : ''}`;
+
+    listContainer.innerHTML = `
+        <div class="form-students-summary">
+            Instructores que enseñan este estilo: <strong>${instructorItems.length}</strong>
+        </div>
+        <div class="list-sort-bar" id="style-instructors-sort-bar">
+            <button type="button" class="list-sort-btn" data-style-instructors-sort="name">${nameLabel}</button>
+            <button type="button" class="list-sort-btn" data-style-instructors-sort="specialty">${specialtyLabel}</button>
+        </div>
+        <div class="form-known-students">
+            ${sortedInstructors.length === 0
+                ? '<p class="text-muted">Aun no hay instructores asignados a este estilo.</p>'
+                : sortedInstructors.map(item => {
+                    return `
+                        <div class="form-known-student-item">
+                            <span class="form-known-student-name">${item.nombre}</span>
+                            <span class="form-known-student-date">${item.especialidad}</span>
+                        </div>
+                    `;
+                }).join('')
+            }
+        </div>
+    `;
+
+    listContainer.querySelectorAll('[data-style-instructors-sort]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const selectedKey = btn.dataset.styleInstructorsSort;
+            if (!selectedKey) return;
+
+            const isSameKey = finalViewState.styleInstructors.sortKey === selectedKey;
+            finalViewState.styleInstructors.sortDirection = isSameKey && finalViewState.styleInstructors.sortDirection === 'asc' ? 'desc' : 'asc';
+            finalViewState.styleInstructors.sortKey = selectedKey;
+            updateListSortPreference('styleInstructors', finalViewState.styleInstructors.sortKey, finalViewState.styleInstructors.sortDirection);
+            renderStyleInstructorsList();
+        });
+    });
+}
+
+function setupStyleProfileEventListeners() {
+    const modal = document.getElementById('style-profile-modal');
+    const closeBtn = document.getElementById('style-profile-close-btn');
+    const closeFooterBtn = document.getElementById('style-close-btn');
+    const editBtn = document.getElementById('style-edit-btn');
+    const menuInfoBtn = document.getElementById('style-menu-info');
+    const menuInstructorsBtn = document.getElementById('style-menu-instructors');
+
+    if (!modal) return;
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeStyleProfileModal);
+    }
+
+    if (closeFooterBtn) {
+        closeFooterBtn.addEventListener('click', closeStyleProfileModal);
+    }
+
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'style-profile-modal') {
+            closeStyleProfileModal();
+        }
+    });
+
+    if (menuInfoBtn) {
+        menuInfoBtn.addEventListener('click', () => {
+            switchStyleProfilePanel('info');
+        });
+    }
+
+    if (menuInstructorsBtn) {
+        menuInstructorsBtn.addEventListener('click', async () => {
+            switchStyleProfilePanel('instructors');
+            await loadStyleInstructorsPanel();
+        });
+    }
+
+    if (editBtn) {
+        editBtn.addEventListener('click', async () => {
+            if (!isAdminSession()) {
+                showToast('Solo administradores pueden editar estilos', 'error');
+                return;
+            }
+
+            const selectedStyle = finalViewState.selectedStyle;
+            if (!selectedStyle) {
+                showToast('No hay estilo seleccionado', 'error');
+                return;
+            }
+
+            closeStyleProfileModal();
+            await openFinalEditDialog('estilos', selectedStyle);
+        });
+    }
 }
 
 async function openGradeProfileModal(gradeRow) {
@@ -736,6 +1236,19 @@ async function openGradeProfileModal(gradeRow) {
     const gradeName = gradeRow.nombre || `Grado ${gradeRow.id_grado}`;
     document.getElementById('grade-profile-title').textContent = gradeName;
     document.getElementById('grade-profile-subtitle').textContent = `ID: ${gradeRow.id_grado} · Consulta y edita este grado`;
+
+    const canManage = isAdminSession();
+    const editBtn = document.getElementById('grade-edit-btn');
+    const manageFormsBtn = document.getElementById('grade-manage-forms-btn');
+    const saveFormsBtn = document.getElementById('grade-save-forms-btn');
+    const cancelFormsBtn = document.getElementById('grade-cancel-forms-btn');
+
+    if (editBtn) editBtn.style.display = canManage ? 'inline-block' : 'none';
+    if (manageFormsBtn) manageFormsBtn.style.display = canManage ? 'inline-block' : 'none';
+    if (!canManage) {
+        if (saveFormsBtn) saveFormsBtn.style.display = 'none';
+        if (cancelFormsBtn) cancelFormsBtn.style.display = 'none';
+    }
 
     renderGradeInfoPanel(gradeRow);
     switchGradeProfilePanel('info');
@@ -823,15 +1336,16 @@ function switchGradeProfilePanel(panelName) {
     const manageBtn = document.getElementById('grade-manage-forms-btn');
     const saveBtn = document.getElementById('grade-save-forms-btn');
     const cancelBtn = document.getElementById('grade-cancel-forms-btn');
+    const canManage = isAdminSession();
 
     if (manageBtn) {
-        manageBtn.style.display = panelName === 'forms' ? 'inline-block' : 'none';
+        manageBtn.style.display = canManage && panelName === 'forms' ? 'inline-block' : 'none';
     }
     if (saveBtn) {
-        saveBtn.style.display = panelName === 'forms' && finalViewState.gradeForms.selectorOpen ? 'inline-block' : 'none';
+        saveBtn.style.display = canManage && panelName === 'forms' && finalViewState.gradeForms.selectorOpen ? 'inline-block' : 'none';
     }
     if (cancelBtn) {
-        cancelBtn.style.display = panelName === 'forms' && finalViewState.gradeForms.selectorOpen ? 'inline-block' : 'none';
+        cancelBtn.style.display = canManage && panelName === 'forms' && finalViewState.gradeForms.selectorOpen ? 'inline-block' : 'none';
     }
 }
 
@@ -1207,6 +1721,10 @@ function setupGradeProfileEventListeners() {
 
     if (manageFormsBtn) {
         manageFormsBtn.addEventListener('click', async () => {
+            if (!isAdminSession()) {
+                showToast('Solo administradores pueden modificar formas requeridas del grado', 'error');
+                return;
+            }
             switchGradeProfilePanel('forms');
             await loadGradeFormsPanel();
             openGradeFormsSelector();
@@ -1256,6 +1774,11 @@ async function openFormProfileModal(formRow) {
     const formName = formRow.nombre || `Forma ${formRow.id_forma}`;
     document.getElementById('form-profile-title').textContent = formName;
     document.getElementById('form-profile-subtitle').textContent = `ID: ${formRow.id_forma} · Consulta y edita esta forma`;
+
+    const editBtn = document.getElementById('form-edit-btn');
+    if (editBtn) {
+        editBtn.style.display = isAdminSession() ? 'inline-block' : 'none';
+    }
 
     renderFormInfoPanel(formRow);
     switchFormProfilePanel('info');
@@ -1510,6 +2033,23 @@ async function openStudentProfileModal(studentRow) {
     document.getElementById('student-profile-title').textContent = studentName;
     document.getElementById('student-profile-subtitle').textContent = `ID: ${studentRow.id_alumno} · Gestiona su informacion y sus formas`;
 
+    const canManage = isAdminSession();
+    const editBtn = document.getElementById('student-edit-btn');
+    const manageFormsBtn = document.getElementById('student-manage-forms-btn');
+    const saveFormsBtn = document.getElementById('student-save-forms-btn');
+    const cancelFormsBtn = document.getElementById('student-cancel-forms-btn');
+
+    if (editBtn) {
+        editBtn.style.display = canManage ? 'inline-block' : 'none';
+    }
+    if (manageFormsBtn) {
+        manageFormsBtn.style.display = canManage ? 'inline-block' : 'none';
+    }
+    if (!canManage) {
+        if (saveFormsBtn) saveFormsBtn.style.display = 'none';
+        if (cancelFormsBtn) cancelFormsBtn.style.display = 'none';
+    }
+
     renderStudentInfoPanel(studentRow);
     switchStudentProfilePanel('info');
     modal.style.display = 'flex';
@@ -1591,12 +2131,13 @@ function switchStudentProfilePanel(panelName) {
 
     const saveBtn = document.getElementById('student-save-forms-btn');
     const cancelBtn = document.getElementById('student-cancel-forms-btn');
+    const canManage = isAdminSession();
     if (saveBtn) {
-        const shouldShowSave = panelName === 'forms' && finalViewState.studentForms.selectorOpen;
+        const shouldShowSave = canManage && panelName === 'forms' && finalViewState.studentForms.selectorOpen;
         saveBtn.style.display = shouldShowSave ? 'inline-block' : 'none';
     }
     if (cancelBtn) {
-        const shouldShowCancel = panelName === 'forms' && finalViewState.studentForms.selectorOpen;
+        const shouldShowCancel = canManage && panelName === 'forms' && finalViewState.studentForms.selectorOpen;
         cancelBtn.style.display = shouldShowCancel ? 'inline-block' : 'none';
     }
 }
@@ -1912,6 +2453,10 @@ function setupStudentProfileEventListeners() {
 
     if (manageFormsBtn) {
         manageFormsBtn.addEventListener('click', async () => {
+            if (!isAdminSession()) {
+                showToast('Solo administradores pueden modificar formas de alumno', 'error');
+                return;
+            }
             switchStudentProfilePanel('forms');
             await loadStudentFormsPanel();
             openStudentFormsSelector();
@@ -1942,6 +2487,904 @@ function setupStudentProfileEventListeners() {
 
     if (cancelFormsBtn) {
         cancelFormsBtn.addEventListener('click', cancelStudentFormsSelection);
+    }
+}
+
+async function openInstructorProfileModal(instructorRow) {
+    const modal = document.getElementById('instructor-profile-modal');
+    if (!modal) return;
+
+    finalViewState.selectedInstructor = instructorRow;
+    finalViewState.instructorForms = {
+        forms: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        relationMode: 'unknown',
+        sortKey: finalViewState.sortPreferences.instructorForms.sortKey,
+        sortDirection: finalViewState.sortPreferences.instructorForms.sortDirection,
+    };
+    finalViewState.instructorCourses = {
+        courses: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        sortKey: finalViewState.sortPreferences.instructorCourses.sortKey,
+        sortDirection: finalViewState.sortPreferences.instructorCourses.sortDirection,
+    };
+
+    const instructorName = instructorRow.nombre || `Instructor ${instructorRow.id_instructor}`;
+    document.getElementById('instructor-profile-title').textContent = instructorName;
+    document.getElementById('instructor-profile-subtitle').textContent = `ID: ${instructorRow.id_instructor} · Gestiona sus formas y cursos`;
+
+    const canManage = isAdminSession();
+    const editBtn = document.getElementById('instructor-edit-btn');
+    const manageFormsBtn = document.getElementById('instructor-manage-forms-btn');
+    const saveFormsBtn = document.getElementById('instructor-save-forms-btn');
+    const cancelFormsBtn = document.getElementById('instructor-cancel-forms-btn');
+    const manageCoursesBtn = document.getElementById('instructor-manage-courses-btn');
+    const saveCoursesBtn = document.getElementById('instructor-save-courses-btn');
+    const cancelCoursesBtn = document.getElementById('instructor-cancel-courses-btn');
+
+    if (editBtn) editBtn.style.display = canManage ? 'inline-block' : 'none';
+    if (manageFormsBtn) manageFormsBtn.style.display = canManage ? 'inline-block' : 'none';
+    if (manageCoursesBtn) manageCoursesBtn.style.display = canManage ? 'inline-block' : 'none';
+    if (!canManage) {
+        if (saveFormsBtn) saveFormsBtn.style.display = 'none';
+        if (cancelFormsBtn) cancelFormsBtn.style.display = 'none';
+        if (saveCoursesBtn) saveCoursesBtn.style.display = 'none';
+        if (cancelCoursesBtn) cancelCoursesBtn.style.display = 'none';
+    }
+
+    renderInstructorInfoPanel(instructorRow);
+    switchInstructorProfilePanel('info');
+    modal.style.display = 'flex';
+}
+
+function closeInstructorProfileModal() {
+    const modal = document.getElementById('instructor-profile-modal');
+    if (!modal) return;
+
+    modal.style.display = 'none';
+    finalViewState.selectedInstructor = null;
+    finalViewState.instructorForms = {
+        forms: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        relationMode: 'unknown',
+        sortKey: finalViewState.sortPreferences.instructorForms.sortKey,
+        sortDirection: finalViewState.sortPreferences.instructorForms.sortDirection,
+    };
+    finalViewState.instructorCourses = {
+        courses: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        sortKey: finalViewState.sortPreferences.instructorCourses.sortKey,
+        sortDirection: finalViewState.sortPreferences.instructorCourses.sortDirection,
+    };
+
+    const formsList = document.getElementById('instructor-forms-list');
+    if (formsList) {
+        formsList.innerHTML = '';
+    }
+
+    const coursesList = document.getElementById('instructor-courses-list');
+    if (coursesList) {
+        coursesList.innerHTML = '';
+    }
+}
+
+function renderInstructorInfoPanel(instructorRow) {
+    const panel = document.getElementById('instructor-panel-info');
+    if (!panel) return;
+
+    const labels = {
+        id_instructor: 'ID Instructor',
+        nombre: 'Nombre',
+        especialidad: 'Especialidad',
+        fecha_contratacion: 'Fecha de contratacion',
+        activo: 'Activo',
+    };
+
+    const entries = Object.entries(instructorRow || {});
+    panel.innerHTML = `
+        <div class="instructor-profile-info-grid">
+            ${entries.map(([field, value]) => {
+                const label = labels[field] || field;
+                const normalizedValue = value === null || value === undefined || value === '' ? '—' : String(value);
+                return `
+                    <div class="instructor-profile-info-item">
+                        <span class="instructor-profile-info-label">${label}</span>
+                        <span class="instructor-profile-info-value">${normalizedValue}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function switchInstructorProfilePanel(panelName) {
+    document.querySelectorAll('.instructor-profile-menu-btn').forEach(btn => {
+        if (btn.dataset.panel === panelName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    document.querySelectorAll('.instructor-profile-panel').forEach(panel => {
+        panel.classList.remove('active');
+    });
+
+    const panel = document.getElementById(`instructor-panel-${panelName}`);
+    if (panel) {
+        panel.classList.add('active');
+    }
+
+    const manageFormsBtn = document.getElementById('instructor-manage-forms-btn');
+    const saveFormsBtn = document.getElementById('instructor-save-forms-btn');
+    const cancelFormsBtn = document.getElementById('instructor-cancel-forms-btn');
+    const manageCoursesBtn = document.getElementById('instructor-manage-courses-btn');
+    const saveCoursesBtn = document.getElementById('instructor-save-courses-btn');
+    const cancelCoursesBtn = document.getElementById('instructor-cancel-courses-btn');
+
+    const isFormsPanel = panelName === 'forms';
+    const isCoursesPanel = panelName === 'courses';
+    const canManage = isAdminSession();
+
+    if (manageFormsBtn) {
+        manageFormsBtn.style.display = canManage && isFormsPanel ? 'inline-block' : 'none';
+    }
+    if (saveFormsBtn) {
+        saveFormsBtn.style.display = canManage && isFormsPanel && finalViewState.instructorForms.selectorOpen ? 'inline-block' : 'none';
+    }
+    if (cancelFormsBtn) {
+        cancelFormsBtn.style.display = canManage && isFormsPanel && finalViewState.instructorForms.selectorOpen ? 'inline-block' : 'none';
+    }
+
+    if (manageCoursesBtn) {
+        manageCoursesBtn.style.display = canManage && isCoursesPanel ? 'inline-block' : 'none';
+    }
+    if (saveCoursesBtn) {
+        saveCoursesBtn.style.display = canManage && isCoursesPanel && finalViewState.instructorCourses.selectorOpen ? 'inline-block' : 'none';
+    }
+    if (cancelCoursesBtn) {
+        cancelCoursesBtn.style.display = canManage && isCoursesPanel && finalViewState.instructorCourses.selectorOpen ? 'inline-block' : 'none';
+    }
+}
+
+async function loadInstructorFormsPanel() {
+    const loading = document.getElementById('instructor-forms-loading');
+    const listContainer = document.getElementById('instructor-forms-list');
+    const instructor = finalViewState.selectedInstructor;
+
+    if (!listContainer || !instructor) return;
+    if (finalViewState.instructorForms.loaded) return;
+
+    try {
+        loading.style.display = 'flex';
+        listContainer.innerHTML = '';
+
+        try {
+            const [formsRows, instructorFormaRows, instructorFormaColumns] = await Promise.all([
+                apiCall('/api/database/tables/formas/rows?limit=2000'),
+                apiCall('/api/database/tables/instructor_forma/rows?limit=4000'),
+                apiCall('/api/database/tables/instructor_forma/columns'),
+            ]);
+
+            finalViewState.instructorForms = {
+                forms: formsRows || [],
+                links: (instructorFormaRows || []).filter(link => String(link.id_instructor) === String(instructor.id_instructor)),
+                columns: instructorFormaColumns || [],
+                loaded: true,
+                selectorOpen: false,
+                relationMode: 'direct',
+                sortKey: finalViewState.instructorForms.sortKey || finalViewState.sortPreferences.instructorForms.sortKey,
+                sortDirection: finalViewState.instructorForms.sortDirection || finalViewState.sortPreferences.instructorForms.sortDirection,
+            };
+        } catch (directError) {
+            const [formsRows, instructorEstiloRows, instructorEstiloColumns] = await Promise.all([
+                apiCall('/api/database/tables/formas/rows?limit=2000'),
+                apiCall('/api/database/tables/instructor_estilo/rows?limit=4000'),
+                apiCall('/api/database/tables/instructor_estilo/columns'),
+            ]);
+
+            finalViewState.instructorForms = {
+                forms: formsRows || [],
+                links: (instructorEstiloRows || []).filter(link => String(link.id_instructor) === String(instructor.id_instructor)),
+                columns: instructorEstiloColumns || [],
+                loaded: true,
+                selectorOpen: false,
+                relationMode: 'byStyle',
+                sortKey: finalViewState.instructorForms.sortKey || finalViewState.sortPreferences.instructorForms.sortKey,
+                sortDirection: finalViewState.instructorForms.sortDirection || finalViewState.sortPreferences.instructorForms.sortDirection,
+            };
+        }
+
+        renderInstructorFormsList();
+    } catch (error) {
+        listContainer.innerHTML = '<p class="text-muted">No se pudieron cargar las formas del instructor.</p>';
+        showToast('No se pudieron cargar las formas del instructor', 'error');
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function renderInstructorFormsList() {
+    const listContainer = document.getElementById('instructor-forms-list');
+    const instructorFormsState = finalViewState.instructorForms;
+
+    if (!listContainer) return;
+
+    if (!instructorFormsState.forms || instructorFormsState.forms.length === 0) {
+        listContainer.innerHTML = '<p class="text-muted">No hay formas disponibles.</p>';
+        return;
+    }
+
+    const relationMode = instructorFormsState.relationMode;
+    const assignedByFormaId = {};
+    const assignedStyleIds = new Set();
+
+    if (relationMode === 'direct') {
+        (instructorFormsState.links || []).forEach(link => {
+            assignedByFormaId[String(link.id_forma)] = link;
+        });
+    } else {
+        (instructorFormsState.links || []).forEach(link => {
+            assignedStyleIds.add(String(link.id_estilo));
+        });
+    }
+
+    const assignedForms = (instructorFormsState.forms || []).filter(forma => {
+        if (relationMode === 'direct') {
+            return Boolean(assignedByFormaId[String(forma.id_forma)]);
+        }
+        return assignedStyleIds.has(String(forma.id_estilo));
+    });
+
+    const formsSortKey = instructorFormsState.sortKey || 'name';
+    const formsSortDirection = instructorFormsState.sortDirection || 'asc';
+    const sortedAssignedForms = sortListByDirection(assignedForms, formsSortDirection, forma => {
+        if (formsSortKey === 'style') return forma.id_estilo;
+        return forma.nombre || forma.id_forma;
+    });
+
+    const nameLabel = `Forma${formsSortKey === 'name' ? getSortIndicator(formsSortDirection) : ''}`;
+    const styleLabel = `Estilo${formsSortKey === 'style' ? getSortIndicator(formsSortDirection) : ''}`;
+
+    listContainer.innerHTML = `
+        <div class="grade-students-summary">
+            Formas asignadas: <strong>${assignedForms.length}</strong> de ${instructorFormsState.forms.length}
+        </div>
+        ${relationMode === 'byStyle' ? '<p class="text-muted">Tu base de datos asigna formas por estilo (`instructor_estilo`). Al seleccionar una forma se asigna su estilo completo.</p>' : ''}
+        <div class="list-sort-bar" id="instructor-forms-sort-bar">
+            <button type="button" class="list-sort-btn" data-instructor-forms-sort="name">${nameLabel}</button>
+            <button type="button" class="list-sort-btn" data-instructor-forms-sort="style">${styleLabel}</button>
+        </div>
+        <div class="grade-known-forms">
+            ${sortedAssignedForms.length === 0
+                ? '<p class="text-muted">Este instructor aun no tiene formas asignadas.</p>'
+                : sortedAssignedForms.map(forma => {
+                    const formaNombre = forma.nombre || `Forma ${forma.id_forma}`;
+                    return `
+                        <div class="grade-known-form-item">
+                            <span class="grade-known-form-name">${formaNombre}</span>
+                            <span class="grade-known-form-extra">Estilo ${forma.id_estilo}</span>
+                        </div>
+                    `;
+                }).join('')
+            }
+        </div>
+        <div id="instructor-forms-selector-container" style="display: none;"></div>
+    `;
+
+    listContainer.querySelectorAll('[data-instructor-forms-sort]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const selectedKey = btn.dataset.instructorFormsSort;
+            if (!selectedKey) return;
+
+            const isSameKey = finalViewState.instructorForms.sortKey === selectedKey;
+            finalViewState.instructorForms.sortDirection = isSameKey && finalViewState.instructorForms.sortDirection === 'asc' ? 'desc' : 'asc';
+            finalViewState.instructorForms.sortKey = selectedKey;
+            updateListSortPreference('instructorForms', finalViewState.instructorForms.sortKey, finalViewState.instructorForms.sortDirection);
+            renderInstructorFormsList();
+        });
+    });
+
+    if (instructorFormsState.selectorOpen) {
+        renderInstructorFormsSelector();
+    }
+}
+
+function renderInstructorFormsSelector() {
+    const selectorContainer = document.getElementById('instructor-forms-selector-container');
+    const instructorFormsState = finalViewState.instructorForms;
+
+    if (!selectorContainer) return;
+
+    const relationMode = instructorFormsState.relationMode;
+    const assignedFormIds = new Set();
+    const assignedStyleIds = new Set();
+
+    if (relationMode === 'direct') {
+        (instructorFormsState.links || []).forEach(link => assignedFormIds.add(String(link.id_forma)));
+    } else {
+        (instructorFormsState.links || []).forEach(link => assignedStyleIds.add(String(link.id_estilo)));
+    }
+
+    const formsSortKey = instructorFormsState.sortKey || 'name';
+    const formsSortDirection = instructorFormsState.sortDirection || 'asc';
+    const sortedForms = sortListByDirection(instructorFormsState.forms || [], formsSortDirection, forma => {
+        if (formsSortKey === 'style') return forma.id_estilo;
+        return forma.nombre || forma.id_forma;
+    });
+
+    selectorContainer.style.display = 'block';
+    selectorContainer.innerHTML = `
+        <div class="student-forms-selector-title">Selecciona las formas que puede impartir</div>
+        <div class="student-forms-grid">
+            ${sortedForms.map(forma => {
+                const formaId = String(forma.id_forma);
+                const checked = relationMode === 'direct'
+                    ? assignedFormIds.has(formaId)
+                    : assignedStyleIds.has(String(forma.id_estilo));
+                const formaNombre = forma.nombre || `Forma ${forma.id_forma}`;
+
+                return `
+                    <label class="student-form-item student-form-item-checkbox-only">
+                        <div class="student-form-main">
+                            <input type="checkbox" class="instructor-form-checkbox" data-instructor-forma-id="${formaId}" ${checked ? 'checked' : ''}>
+                            <span class="student-form-name">${formaNombre}</span>
+                        </div>
+                    </label>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function openInstructorFormsSelector() {
+    finalViewState.instructorForms.selectorOpen = true;
+    renderInstructorFormsList();
+    switchInstructorProfilePanel('forms');
+}
+
+function cancelInstructorFormsSelection() {
+    finalViewState.instructorForms.selectorOpen = false;
+    renderInstructorFormsList();
+    switchInstructorProfilePanel('forms');
+}
+
+function getCurrentDateTimeInputValue() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+async function saveInstructorForms() {
+    return runProtectedSaveAction('instructor-forms-save', 'instructor-save-forms-btn', async () => {
+        if (!isAdminSession()) {
+            showToast('Solo administradores pueden modificar formas del instructor', 'error');
+            return;
+        }
+
+        const instructor = finalViewState.selectedInstructor;
+        const formsState = finalViewState.instructorForms;
+
+        if (!instructor || !formsState.loaded) {
+            showToast('No hay datos de formas para guardar', 'error');
+            return;
+        }
+
+        if (!formsState.selectorOpen) {
+            showToast('Primero entra a Agregar/Quitar formas para guardar cambios', 'info');
+            return;
+        }
+
+        const checkboxes = Array.from(document.querySelectorAll('.instructor-form-checkbox'));
+        const selectedFormaIds = checkboxes
+            .filter(checkbox => checkbox.checked)
+            .map(checkbox => String(checkbox.dataset.instructorFormaId));
+
+        const formsById = {};
+        (formsState.forms || []).forEach(forma => {
+            formsById[String(forma.id_forma)] = forma;
+        });
+
+        try {
+            if (formsState.relationMode === 'direct') {
+                const existingByFormaId = {};
+                (formsState.links || []).forEach(link => {
+                    existingByFormaId[String(link.id_forma)] = link;
+                });
+
+                const existingFormaIds = Object.keys(existingByFormaId);
+                const toAdd = selectedFormaIds.filter(id => !existingFormaIds.includes(id));
+                const toRemove = existingFormaIds.filter(id => !selectedFormaIds.includes(id));
+
+                if (toAdd.length === 0 && toRemove.length === 0) {
+                    showToast('No hay cambios en las formas del instructor', 'info');
+                    return;
+                }
+
+                for (const formaId of toAdd) {
+                    await apiCall('/api/database/tables/instructor_forma/rows', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            id_instructor: instructor.id_instructor,
+                            id_forma: Number(formaId),
+                        }),
+                    });
+                }
+
+                const pkFields = getPrimaryKeyFields(formsState.columns);
+                for (const formaId of toRemove) {
+                    const linkRow = existingByFormaId[formaId];
+                    const rowId = buildCompositeRowId(linkRow, pkFields);
+
+                    if (!rowId) {
+                        throw new Error('No se pudo determinar la llave de una relacion instructor-forma');
+                    }
+
+                    await apiCall(`/api/database/tables/instructor_forma/rows/${encodeURIComponent(rowId)}`, {
+                        method: 'DELETE',
+                    });
+                }
+            } else {
+                const selectedStyleIds = new Set(
+                    selectedFormaIds
+                        .map(formaId => formsById[formaId]?.id_estilo)
+                        .filter(styleId => styleId !== undefined && styleId !== null)
+                        .map(styleId => String(styleId))
+                );
+
+                const existingByStyleId = {};
+                (formsState.links || []).forEach(link => {
+                    existingByStyleId[String(link.id_estilo)] = link;
+                });
+
+                const existingStyleIds = Object.keys(existingByStyleId);
+                const selectedStyleIdsList = Array.from(selectedStyleIds);
+                const toAdd = selectedStyleIdsList.filter(id => !existingStyleIds.includes(id));
+                const toRemove = existingStyleIds.filter(id => !selectedStyleIdsList.includes(id));
+
+                if (toAdd.length === 0 && toRemove.length === 0) {
+                    showToast('No hay cambios en las formas del instructor', 'info');
+                    return;
+                }
+
+                for (const styleId of toAdd) {
+                    await apiCall('/api/database/tables/instructor_estilo/rows', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            id_instructor: instructor.id_instructor,
+                            id_estilo: Number(styleId),
+                        }),
+                    });
+                }
+
+                const pkFields = getPrimaryKeyFields(formsState.columns);
+                for (const styleId of toRemove) {
+                    const linkRow = existingByStyleId[styleId];
+                    const rowId = buildCompositeRowId(linkRow, pkFields);
+
+                    if (!rowId) {
+                        throw new Error('No se pudo determinar la llave de una relacion instructor-estilo');
+                    }
+
+                    await apiCall(`/api/database/tables/instructor_estilo/rows/${encodeURIComponent(rowId)}`, {
+                        method: 'DELETE',
+                    });
+                }
+            }
+
+            showToast('Formas del instructor actualizadas', 'success');
+            finalViewState.instructorForms.loaded = false;
+            finalViewState.instructorForms.selectorOpen = false;
+            await loadInstructorFormsPanel();
+            switchInstructorProfilePanel('forms');
+            await loadFinalTabData('instructores');
+        } catch (error) {
+            console.error('Error actualizando formas de instructor:', error);
+            showToast(`Error al actualizar formas: ${error.message || 'Intenta nuevamente'}`, 'error');
+        }
+    });
+}
+
+async function loadInstructorCoursesPanel() {
+    const loading = document.getElementById('instructor-courses-loading');
+    const listContainer = document.getElementById('instructor-courses-list');
+    const instructor = finalViewState.selectedInstructor;
+
+    if (!listContainer || !instructor) return;
+    if (finalViewState.instructorCourses.loaded) return;
+
+    try {
+        loading.style.display = 'flex';
+        listContainer.innerHTML = '';
+
+        const [coursesRows, scheduledRows, scheduledColumns] = await Promise.all([
+            apiCall('/api/database/tables/cursos/rows?limit=2000'),
+            apiCall('/api/database/tables/cursos_agendados/rows?limit=6000'),
+            apiCall('/api/database/tables/cursos_agendados/columns'),
+        ]);
+
+        finalViewState.instructorCourses = {
+            courses: coursesRows || [],
+            links: (scheduledRows || []).filter(link => String(link.id_instructor) === String(instructor.id_instructor)),
+            columns: scheduledColumns || [],
+            loaded: true,
+            selectorOpen: false,
+            sortKey: finalViewState.instructorCourses.sortKey || finalViewState.sortPreferences.instructorCourses.sortKey,
+            sortDirection: finalViewState.instructorCourses.sortDirection || finalViewState.sortPreferences.instructorCourses.sortDirection,
+        };
+
+        renderInstructorCoursesList();
+    } catch (error) {
+        listContainer.innerHTML = '<p class="text-muted">No se pudieron cargar los cursos del instructor.</p>';
+        showToast('No se pudieron cargar los cursos del instructor', 'error');
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function buildInstructorCourseAssignments(coursesState) {
+    const linksByCourseId = {};
+    (coursesState.links || []).forEach(link => {
+        const key = String(link.id_curso);
+        if (!linksByCourseId[key]) {
+            linksByCourseId[key] = [];
+        }
+        linksByCourseId[key].push(link);
+    });
+
+    return (coursesState.courses || []).map(course => {
+        const courseId = String(course.id_curso);
+        const links = linksByCourseId[courseId] || [];
+        const referenceLink = links[0] || null;
+        return {
+            id_curso: course.id_curso,
+            nombre: course.nombre || `Curso ${course.id_curso}`,
+            tema: course.tema || '',
+            assigned: links.length > 0,
+            links,
+            fecha_hora: referenceLink?.fecha_hora ? String(referenceLink.fecha_hora).slice(0, 16) : '',
+        };
+    });
+}
+
+function renderInstructorCoursesList() {
+    const listContainer = document.getElementById('instructor-courses-list');
+    const coursesState = finalViewState.instructorCourses;
+
+    if (!listContainer) return;
+
+    if (!coursesState.courses || coursesState.courses.length === 0) {
+        listContainer.innerHTML = '<p class="text-muted">No hay cursos disponibles.</p>';
+        return;
+    }
+
+    const assignments = buildInstructorCourseAssignments(coursesState).filter(item => item.assigned);
+    const sortKey = coursesState.sortKey || 'name';
+    const sortDirection = coursesState.sortDirection || 'asc';
+
+    const sortedAssignments = sortListByDirection(assignments, sortDirection, assignment => {
+        if (sortKey === 'date') return assignment.fecha_hora || '9999-12-31T23:59';
+        return assignment.nombre;
+    });
+
+    const nameLabel = `Curso${sortKey === 'name' ? getSortIndicator(sortDirection) : ''}`;
+    const dateLabel = `Fecha${sortKey === 'date' ? getSortIndicator(sortDirection) : ''}`;
+
+    listContainer.innerHTML = `
+        <div class="grade-students-summary">
+            Cursos asignados: <strong>${assignments.length}</strong> de ${coursesState.courses.length}
+        </div>
+        <div class="list-sort-bar" id="instructor-courses-sort-bar">
+            <button type="button" class="list-sort-btn" data-instructor-courses-sort="name">${nameLabel}</button>
+            <button type="button" class="list-sort-btn" data-instructor-courses-sort="date">${dateLabel}</button>
+        </div>
+        <div class="grade-known-forms">
+            ${sortedAssignments.length === 0
+                ? '<p class="text-muted">Este instructor aun no tiene cursos asignados.</p>'
+                : sortedAssignments.map(item => {
+                    const dateText = item.fecha_hora ? item.fecha_hora.replace('T', ' ') : 'Sin fecha';
+                    const labelText = item.tema ? `${item.nombre} · ${item.tema}` : item.nombre;
+                    return `
+                        <div class="grade-known-form-item">
+                            <span class="grade-known-form-name">${labelText}</span>
+                            <span class="grade-known-form-extra">${dateText}</span>
+                        </div>
+                    `;
+                }).join('')
+            }
+        </div>
+        <div id="instructor-courses-selector-container" style="display: none;"></div>
+    `;
+
+    listContainer.querySelectorAll('[data-instructor-courses-sort]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const selectedKey = btn.dataset.instructorCoursesSort;
+            if (!selectedKey) return;
+
+            const isSameKey = finalViewState.instructorCourses.sortKey === selectedKey;
+            finalViewState.instructorCourses.sortDirection = isSameKey && finalViewState.instructorCourses.sortDirection === 'asc' ? 'desc' : 'asc';
+            finalViewState.instructorCourses.sortKey = selectedKey;
+            updateListSortPreference('instructorCourses', finalViewState.instructorCourses.sortKey, finalViewState.instructorCourses.sortDirection);
+            renderInstructorCoursesList();
+        });
+    });
+
+    if (coursesState.selectorOpen) {
+        renderInstructorCoursesSelector();
+    }
+}
+
+function renderInstructorCoursesSelector() {
+    const selectorContainer = document.getElementById('instructor-courses-selector-container');
+    const coursesState = finalViewState.instructorCourses;
+
+    if (!selectorContainer) return;
+
+    const assignments = buildInstructorCourseAssignments(coursesState);
+    const assignmentsByCourseId = {};
+    assignments.forEach(item => {
+        assignmentsByCourseId[String(item.id_curso)] = item;
+    });
+
+    const sortKey = coursesState.sortKey || 'name';
+    const sortDirection = coursesState.sortDirection || 'asc';
+    const sortedCourses = sortListByDirection(coursesState.courses || [], sortDirection, course => {
+        if (sortKey === 'date') {
+            const assignment = assignmentsByCourseId[String(course.id_curso)];
+            return assignment?.fecha_hora || '9999-12-31T23:59';
+        }
+        return course.nombre || course.id_curso;
+    });
+
+    selectorContainer.style.display = 'block';
+    selectorContainer.innerHTML = `
+        <div class="student-forms-selector-title">Selecciona los cursos que puede impartir el instructor</div>
+        <div class="student-forms-grid">
+            ${sortedCourses.map(course => {
+                const courseId = String(course.id_curso);
+                const assignment = assignmentsByCourseId[courseId];
+                const checked = assignment?.assigned ? 'checked' : '';
+                const courseName = course.nombre || `Curso ${course.id_curso}`;
+                const dateValue = assignment?.fecha_hora || '';
+
+                return `
+                    <label class="student-form-item student-form-item-checkbox-only">
+                        <div class="student-form-main">
+                            <input type="checkbox" class="instructor-course-checkbox" data-instructor-course-id="${courseId}" ${checked}>
+                            <span class="student-form-name">${courseName}</span>
+                        </div>
+                        <input type="datetime-local" class="student-form-date" data-instructor-course-datetime="${courseId}" value="${dateValue}" title="Fecha y hora (opcional)">
+                    </label>
+                `;
+            }).join('')}
+        </div>
+        <p class="text-muted">La fecha y hora es opcional; si la dejas vacia se usara la fecha y hora actual.</p>
+    `;
+}
+
+function openInstructorCoursesSelector() {
+    finalViewState.instructorCourses.selectorOpen = true;
+    renderInstructorCoursesList();
+    switchInstructorProfilePanel('courses');
+}
+
+function cancelInstructorCoursesSelection() {
+    finalViewState.instructorCourses.selectorOpen = false;
+    renderInstructorCoursesList();
+    switchInstructorProfilePanel('courses');
+}
+
+async function saveInstructorCourses() {
+    return runProtectedSaveAction('instructor-courses-save', 'instructor-save-courses-btn', async () => {
+        if (!isAdminSession()) {
+            showToast('Solo administradores pueden modificar cursos del instructor', 'error');
+            return;
+        }
+
+        const instructor = finalViewState.selectedInstructor;
+        const coursesState = finalViewState.instructorCourses;
+
+        if (!instructor || !coursesState.loaded) {
+            showToast('No hay datos de cursos para guardar', 'error');
+            return;
+        }
+
+        if (!coursesState.selectorOpen) {
+            showToast('Primero entra a Agregar/Quitar cursos para guardar cambios', 'info');
+            return;
+        }
+
+        const checkboxes = Array.from(document.querySelectorAll('.instructor-course-checkbox'));
+        const selectedCourseIds = checkboxes
+            .filter(checkbox => checkbox.checked)
+            .map(checkbox => String(checkbox.dataset.instructorCourseId));
+
+        const linksByCourseId = {};
+        (coursesState.links || []).forEach(link => {
+            const key = String(link.id_curso);
+            if (!linksByCourseId[key]) {
+                linksByCourseId[key] = [];
+            }
+            linksByCourseId[key].push(link);
+        });
+
+        const existingCourseIds = Object.keys(linksByCourseId);
+        const toAdd = selectedCourseIds.filter(id => !existingCourseIds.includes(id));
+        const toRemove = existingCourseIds.filter(id => !selectedCourseIds.includes(id));
+
+        if (toAdd.length === 0 && toRemove.length === 0) {
+            showToast('No hay cambios en los cursos del instructor', 'info');
+            return;
+        }
+
+        try {
+            for (const courseId of toAdd) {
+                const dateInput = document.querySelector(`[data-instructor-course-datetime="${courseId}"]`);
+                const fechaHora = dateInput?.value?.trim() || getCurrentDateTimeInputValue();
+
+                await apiCall('/api/database/tables/cursos_agendados/rows', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        id_curso: Number(courseId),
+                        id_instructor: instructor.id_instructor,
+                        fecha_hora: fechaHora,
+                        activo: true,
+                    }),
+                });
+            }
+
+            const pkFields = getPrimaryKeyFields(coursesState.columns);
+            for (const courseId of toRemove) {
+                const links = linksByCourseId[courseId] || [];
+                for (const linkRow of links) {
+                    const rowId = buildCompositeRowId(linkRow, pkFields);
+
+                    if (!rowId) {
+                        throw new Error('No se pudo determinar la llave de un curso asignado');
+                    }
+
+                    await apiCall(`/api/database/tables/cursos_agendados/rows/${encodeURIComponent(rowId)}`, {
+                        method: 'DELETE',
+                    });
+                }
+            }
+
+            showToast('Cursos del instructor actualizados', 'success');
+            finalViewState.instructorCourses.loaded = false;
+            finalViewState.instructorCourses.selectorOpen = false;
+            await loadInstructorCoursesPanel();
+            switchInstructorProfilePanel('courses');
+            await loadFinalTabData('instructores');
+        } catch (error) {
+            console.error('Error actualizando cursos de instructor:', error);
+            showToast(`Error al actualizar cursos: ${error.message || 'Intenta nuevamente'}`, 'error');
+        }
+    });
+}
+
+function setupInstructorProfileEventListeners() {
+    const modal = document.getElementById('instructor-profile-modal');
+    const closeBtn = document.getElementById('instructor-profile-close-btn');
+    const closeFooterBtn = document.getElementById('instructor-close-btn');
+    const editBtn = document.getElementById('instructor-edit-btn');
+    const manageFormsBtn = document.getElementById('instructor-manage-forms-btn');
+    const saveFormsBtn = document.getElementById('instructor-save-forms-btn');
+    const cancelFormsBtn = document.getElementById('instructor-cancel-forms-btn');
+    const manageCoursesBtn = document.getElementById('instructor-manage-courses-btn');
+    const saveCoursesBtn = document.getElementById('instructor-save-courses-btn');
+    const cancelCoursesBtn = document.getElementById('instructor-cancel-courses-btn');
+    const menuInfoBtn = document.getElementById('instructor-menu-info');
+    const menuFormsBtn = document.getElementById('instructor-menu-forms');
+    const menuCoursesBtn = document.getElementById('instructor-menu-courses');
+
+    if (!modal) return;
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeInstructorProfileModal);
+    }
+
+    if (closeFooterBtn) {
+        closeFooterBtn.addEventListener('click', closeInstructorProfileModal);
+    }
+
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'instructor-profile-modal') {
+            closeInstructorProfileModal();
+        }
+    });
+
+    if (menuInfoBtn) {
+        menuInfoBtn.addEventListener('click', () => {
+            switchInstructorProfilePanel('info');
+        });
+    }
+
+    if (menuFormsBtn) {
+        menuFormsBtn.addEventListener('click', async () => {
+            switchInstructorProfilePanel('forms');
+            await loadInstructorFormsPanel();
+        });
+    }
+
+    if (menuCoursesBtn) {
+        menuCoursesBtn.addEventListener('click', async () => {
+            switchInstructorProfilePanel('courses');
+            await loadInstructorCoursesPanel();
+        });
+    }
+
+    if (manageFormsBtn) {
+        manageFormsBtn.addEventListener('click', async () => {
+            if (!isAdminSession()) {
+                showToast('Solo administradores pueden modificar formas de instructor', 'error');
+                return;
+            }
+            switchInstructorProfilePanel('forms');
+            await loadInstructorFormsPanel();
+            openInstructorFormsSelector();
+        });
+    }
+
+    if (saveFormsBtn) {
+        saveFormsBtn.addEventListener('click', saveInstructorForms);
+    }
+
+    if (cancelFormsBtn) {
+        cancelFormsBtn.addEventListener('click', cancelInstructorFormsSelection);
+    }
+
+    if (manageCoursesBtn) {
+        manageCoursesBtn.addEventListener('click', async () => {
+            if (!isAdminSession()) {
+                showToast('Solo administradores pueden modificar cursos de instructor', 'error');
+                return;
+            }
+            switchInstructorProfilePanel('courses');
+            await loadInstructorCoursesPanel();
+            openInstructorCoursesSelector();
+        });
+    }
+
+    if (saveCoursesBtn) {
+        saveCoursesBtn.addEventListener('click', saveInstructorCourses);
+    }
+
+    if (cancelCoursesBtn) {
+        cancelCoursesBtn.addEventListener('click', cancelInstructorCoursesSelection);
+    }
+
+    if (editBtn) {
+        editBtn.addEventListener('click', async () => {
+            if (!isAdminSession()) {
+                showToast('Solo administradores pueden editar instructores', 'error');
+                return;
+            }
+
+            const instructor = finalViewState.selectedInstructor;
+            if (!instructor) {
+                showToast('No hay instructor seleccionado', 'error');
+                return;
+            }
+
+            closeInstructorProfileModal();
+            await openFinalEditDialog('instructores', instructor);
+        });
     }
 }
 
@@ -2016,6 +3459,11 @@ async function openFinalEditDialog(tableName, rowData) {
 }
 
 async function deleteFinalRow(tableName, rowId, pkField) {
+    if (!isAdminSession()) {
+        showToast('Solo administradores pueden eliminar registros', 'error');
+        return;
+    }
+
     try {
         await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows/${rowId}`, {
             method: 'DELETE'
@@ -2267,10 +3715,13 @@ function renderFinalAddForm(columns, rowData = null) {
         // Campos de texto
         if (dataType.includes('varchar') || dataType.includes('char') || dataType.includes('text')) {
             const value = currentValue || '';
+            const normalizedColumnName = String(col.name || '').toLowerCase();
+            const isPasswordField = normalizedColumnName.includes('password') || normalizedColumnName.includes('contrasena') || normalizedColumnName.includes('clave');
+            const inputType = isPasswordField ? 'password' : 'text';
             return `
                 <div class="form-group">
                     <label for="field-${col.name}">${col.name}${requiredLabel}</label>
-                    <input type="text" id="field-${col.name}" class="form-input" data-column="${col.name}" value="${value}" ${requiredAttr}>
+                    <input type="${inputType}" id="field-${col.name}" class="form-input" data-column="${col.name}" value="${value}" ${requiredAttr}>
                 </div>
             `;
         }
@@ -2357,6 +3808,113 @@ function renderFinalAddForm(columns, rowData = null) {
             </div>
         `;
     }).join('');
+
+    if (finalViewState.currentTable === 'instructores' && !finalViewState.editingMode) {
+        form.insertAdjacentHTML('beforeend', `
+            <div class="form-group" style="margin-top: 8px;">
+                <small class="text-muted">Si el instructor no está vinculado a un alumno, debe capturarse correo_electronico y password_hash para que pueda iniciar sesión.</small>
+            </div>
+        `);
+    }
+
+    if (finalViewState.currentTable === 'alumnos' && !finalViewState.editingMode) {
+        form.insertAdjacentHTML('beforeend', `
+            <div class="form-group" style="margin-top: 8px; padding-top: 12px; border-top: 1px dashed var(--gray-300);">
+                <label class="checkbox-label" for="create-instructor-from-student">
+                    <input type="checkbox" id="create-instructor-from-student" class="form-checkbox">
+                    Registrar también como instructor
+                </label>
+                <small class="text-muted">Activa esta opción para capturar datos adicionales del instructor.</small>
+            </div>
+            <div id="instructor-from-student-section" style="display: none; border: 1px solid var(--gray-200); border-radius: 10px; padding: 12px; background: #fafafa;">
+                <div class="form-group">
+                    <div id="instructor-name-manual-group">
+                        <label for="instructor-field-nombre">Nombre de instructor <span class="required-indicator">*</span></label>
+                        <input type="text" id="instructor-field-nombre" class="form-input" placeholder="Nombre para el perfil de instructor">
+                    </div>
+                    <small id="instructor-name-sync-hint" class="text-muted" style="display: none;">Se usara automaticamente el nombre del alumno.</small>
+                    <label class="checkbox-label" for="instructor-name-sync" style="margin-top: 8px;">
+                        <input type="checkbox" id="instructor-name-sync" class="form-checkbox" checked>
+                        Usar el mismo nombre del alumno
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="instructor-field-especialidad">Especialidad</label>
+                    <input type="text" id="instructor-field-especialidad" class="form-input" placeholder="Ej. Ving Tsun, combate, niños...">
+                </div>
+                <div class="form-group">
+                    <label for="instructor-field-fecha_contratacion">Fecha de contratación</label>
+                    <input type="date" id="instructor-field-fecha_contratacion" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label" for="instructor-field-activo">
+                        <input type="checkbox" id="instructor-field-activo" class="form-checkbox" checked>
+                        Instructor activo
+                    </label>
+                </div>
+            </div>
+        `);
+
+        const createInstructorCheckbox = document.getElementById('create-instructor-from-student');
+        const instructorSection = document.getElementById('instructor-from-student-section');
+        const studentNameInput = document.getElementById('field-nombre');
+        const instructorNameInput = document.getElementById('instructor-field-nombre');
+        const instructorNameSyncCheckbox = document.getElementById('instructor-name-sync');
+        const instructorNameManualGroup = document.getElementById('instructor-name-manual-group');
+        const instructorNameSyncHint = document.getElementById('instructor-name-sync-hint');
+
+        const syncInstructorNameState = () => {
+            if (!instructorNameInput || !instructorNameSyncCheckbox) {
+                return;
+            }
+
+            const shouldSync = instructorNameSyncCheckbox.checked;
+            instructorNameInput.disabled = shouldSync;
+
+            if (instructorNameManualGroup) {
+                instructorNameManualGroup.style.display = shouldSync ? 'none' : 'block';
+            }
+
+            if (instructorNameSyncHint) {
+                instructorNameSyncHint.style.display = shouldSync ? 'block' : 'none';
+            }
+
+            if (shouldSync && studentNameInput) {
+                instructorNameInput.value = studentNameInput.value || '';
+            }
+        };
+
+        if (studentNameInput && instructorNameInput && !instructorNameInput.value.trim()) {
+            instructorNameInput.value = studentNameInput.value || '';
+        }
+
+        if (studentNameInput && instructorNameInput) {
+            studentNameInput.addEventListener('input', () => {
+                if (instructorNameSyncCheckbox && instructorNameSyncCheckbox.checked) {
+                    instructorNameInput.value = studentNameInput.value || '';
+                } else if (!instructorNameInput.value.trim()) {
+                    instructorNameInput.value = studentNameInput.value || '';
+                }
+            });
+        }
+
+        if (instructorNameSyncCheckbox) {
+            instructorNameSyncCheckbox.addEventListener('change', syncInstructorNameState);
+            syncInstructorNameState();
+        }
+
+        if (createInstructorCheckbox && instructorSection) {
+            createInstructorCheckbox.addEventListener('change', () => {
+                instructorSection.style.display = createInstructorCheckbox.checked ? 'block' : 'none';
+                if (createInstructorCheckbox.checked) {
+                    syncInstructorNameState();
+                    if (instructorNameInput && !instructorNameInput.value.trim() && studentNameInput) {
+                        instructorNameInput.value = studentNameInput.value || '';
+                    }
+                }
+            });
+        }
+    }
 }
 
 function closeFinalAddDialog() {
@@ -2366,6 +3924,95 @@ function closeFinalAddDialog() {
     finalViewState.currentTable = null;
     finalViewState.editingMode = false;
     finalViewState.editingRowId = null;
+}
+
+async function resolveCreatedAlumnoId(createdRow, alumnoPayload) {
+    if (createdRow?.id_alumno !== undefined && createdRow?.id_alumno !== null) {
+        return Number(createdRow.id_alumno);
+    }
+
+    if (createdRow?.id !== undefined && createdRow?.id !== null) {
+        return Number(createdRow.id);
+    }
+
+    const numeroMatricula = alumnoPayload?.numero_matricula;
+    const correo = alumnoPayload?.correo_electronico;
+    const alumnos = await apiCall('/api/database/tables/alumnos/rows?limit=5000');
+    const found = (alumnos || []).find(row => {
+        if (numeroMatricula && String(row.numero_matricula) === String(numeroMatricula)) {
+            return true;
+        }
+        if (correo && row.correo_electronico && String(row.correo_electronico) === String(correo)) {
+            return true;
+        }
+        return false;
+    });
+
+    if (!found || found.id_alumno === undefined || found.id_alumno === null) {
+        throw new Error('No se pudo determinar el ID del alumno recién creado');
+    }
+
+    return Number(found.id_alumno);
+}
+
+function getInstructorPayloadFromAddStudentForm(alumnoPayload) {
+    const createInstructorCheckbox = document.getElementById('create-instructor-from-student');
+    if (!createInstructorCheckbox || !createInstructorCheckbox.checked) {
+        return null;
+    }
+
+    const nombreInput = document.getElementById('instructor-field-nombre');
+    const especialidadInput = document.getElementById('instructor-field-especialidad');
+    const fechaContratacionInput = document.getElementById('instructor-field-fecha_contratacion');
+    const activoInput = document.getElementById('instructor-field-activo');
+
+    const nombreInstructor = nombreInput?.value?.trim() || alumnoPayload?.nombre || '';
+    if (!nombreInstructor) {
+        throw new Error('El nombre del instructor es obligatorio');
+    }
+
+    return {
+        nombre: nombreInstructor,
+        especialidad: especialidadInput?.value?.trim() || null,
+        correo_electronico: alumnoPayload?.correo_electronico || null,
+        fecha_contratacion: fechaContratacionInput?.value?.trim() || null,
+        activo: activoInput ? Boolean(activoInput.checked) : true,
+    };
+}
+
+async function validateStandaloneInstructorCredentials(payload) {
+    if (!payload) {
+        return;
+    }
+
+    const instructorId = payload.id_instructor;
+    const email = String(payload.correo_electronico || '').trim();
+    const password = String(payload.password_hash || '').trim();
+
+    const alumnos = await apiCall('/api/database/tables/alumnos/rows?limit=5000');
+    const linkedById = Number.isFinite(Number(instructorId))
+        ? (alumnos || []).some(row => Number(row.id_alumno) === Number(instructorId))
+        : false;
+    const linkedByEmail = email
+        ? (alumnos || []).some(row => String(row.correo_electronico || '').trim().toLowerCase() === email.toLowerCase())
+        : false;
+
+    const isStandaloneInstructor = !linkedById && !linkedByEmail;
+    if (!isStandaloneInstructor) {
+        return;
+    }
+
+    if (!email) {
+        throw new Error('El instructor que no es alumno debe tener correo_electronico para iniciar sesión');
+    }
+
+    if (!password) {
+        throw new Error('El instructor que no es alumno debe tener contraseña');
+    }
+
+    if (password.length <= 6) {
+        throw new Error('La contraseña del instructor debe tener más de 6 caracteres');
+    }
 }
 
 async function saveFinalAddForm() {
@@ -2415,24 +4062,52 @@ async function saveFinalAddForm() {
             return;
         }
 
+        let instructorPayload = null;
+        if (tableName === 'alumnos' && !finalViewState.editingMode) {
+            instructorPayload = getInstructorPayloadFromAddStudentForm(rowData);
+        }
+
+        if (tableName === 'instructores') {
+            await validateStandaloneInstructorCredentials(rowData);
+        }
+
         try {
+            let response;
             let successMsg;
 
             if (finalViewState.editingMode) {
                 // Modo edición - PUT
                 const rowId = finalViewState.editingRowId;
-                await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows/${rowId}`, {
+                response = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows/${rowId}`, {
                     method: 'PUT',
                     body: JSON.stringify(rowData)
                 });
                 successMsg = `✓ Elemento actualizado en ${tableName}`;
             } else {
                 // Modo agregar - POST
-                await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows`, {
+                response = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows`, {
                     method: 'POST',
                     body: JSON.stringify(rowData)
                 });
                 successMsg = `✓ Elemento agregado a ${tableName}`;
+
+                if (tableName === 'alumnos' && instructorPayload) {
+                    const alumnoId = await resolveCreatedAlumnoId(response, rowData);
+                    const instructorBody = {
+                        id_instructor: alumnoId,
+                        nombre: instructorPayload.nombre,
+                        correo_electronico: instructorPayload.correo_electronico,
+                        fecha_contratacion: instructorPayload.fecha_contratacion,
+                        activo: instructorPayload.activo,
+                        especialidad: instructorPayload.especialidad,
+                    };
+
+                    await apiCall('/api/database/tables/instructores/rows', {
+                        method: 'POST',
+                        body: JSON.stringify(instructorBody)
+                    });
+                    successMsg += ' e instructor vinculado';
+                }
             }
 
             showToast(successMsg, 'success');

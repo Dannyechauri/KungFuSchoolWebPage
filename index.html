@@ -396,6 +396,88 @@
         </div>
     </div>
 
+    <!-- Modal de perfil de instructor -->
+    <div class="instructor-profile-modal" id="instructor-profile-modal" style="display: none;">
+        <div class="instructor-profile-modal-content">
+            <div class="instructor-profile-header">
+                <div>
+                    <h3 id="instructor-profile-title">Instructor</h3>
+                    <p id="instructor-profile-subtitle" class="instructor-profile-subtitle">Perfil, formas y cursos</p>
+                </div>
+                <button class="instructor-profile-close" id="instructor-profile-close-btn" type="button">✕</button>
+            </div>
+
+            <div class="instructor-profile-menu" role="tablist" aria-label="Menu de instructor">
+                <button class="instructor-profile-menu-btn active" id="instructor-menu-info" type="button" data-panel="info">Caracteristicas</button>
+                <button class="instructor-profile-menu-btn" id="instructor-menu-forms" type="button" data-panel="forms">Formas que puede dar</button>
+                <button class="instructor-profile-menu-btn" id="instructor-menu-courses" type="button" data-panel="courses">Cursos asignados</button>
+            </div>
+
+            <div class="instructor-profile-body">
+                <div class="instructor-profile-panel active" id="instructor-panel-info"></div>
+                <div class="instructor-profile-panel" id="instructor-panel-forms">
+                    <div class="loading" id="instructor-forms-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        Cargando formas...
+                    </div>
+                    <div id="instructor-forms-list"></div>
+                </div>
+                <div class="instructor-profile-panel" id="instructor-panel-courses">
+                    <div class="loading" id="instructor-courses-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        Cargando cursos...
+                    </div>
+                    <div id="instructor-courses-list"></div>
+                </div>
+            </div>
+
+            <div class="instructor-profile-footer">
+                <button class="btn btn-info" id="instructor-edit-btn" type="button">Editar datos</button>
+                <button class="btn btn-warning" id="instructor-manage-forms-btn" type="button" style="display: none;">Agregar/Quitar formas</button>
+                <button class="btn btn-success" id="instructor-save-forms-btn" type="button" style="display: none;">Guardar formas</button>
+                <button class="btn btn-secondary" id="instructor-cancel-forms-btn" type="button" style="display: none;">Cancelar</button>
+                <button class="btn btn-warning" id="instructor-manage-courses-btn" type="button" style="display: none;">Agregar/Quitar cursos</button>
+                <button class="btn btn-success" id="instructor-save-courses-btn" type="button" style="display: none;">Guardar cursos</button>
+                <button class="btn btn-secondary" id="instructor-cancel-courses-btn" type="button" style="display: none;">Cancelar</button>
+                <button class="btn btn-secondary" id="instructor-close-btn" type="button">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de perfil de estilo -->
+    <div class="style-profile-modal" id="style-profile-modal" style="display: none;">
+        <div class="style-profile-modal-content">
+            <div class="style-profile-header">
+                <div>
+                    <h3 id="style-profile-title">Estilo</h3>
+                    <p id="style-profile-subtitle" class="style-profile-subtitle">Detalles e instructores del estilo</p>
+                </div>
+                <button class="style-profile-close" id="style-profile-close-btn" type="button">✕</button>
+            </div>
+
+            <div class="style-profile-menu" role="tablist" aria-label="Menu de estilo">
+                <button class="style-profile-menu-btn active" id="style-menu-info" type="button" data-panel="info">Caracteristicas</button>
+                <button class="style-profile-menu-btn" id="style-menu-instructors" type="button" data-panel="instructors">Instructores que lo enseñan</button>
+            </div>
+
+            <div class="style-profile-body">
+                <div class="style-profile-panel active" id="style-panel-info"></div>
+                <div class="style-profile-panel" id="style-panel-instructors">
+                    <div class="loading" id="style-instructors-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        Cargando instructores...
+                    </div>
+                    <div id="style-instructors-list"></div>
+                </div>
+            </div>
+
+            <div class="style-profile-footer">
+                <button class="btn btn-info" id="style-edit-btn" type="button">Editar datos</button>
+                <button class="btn btn-secondary" id="style-close-btn" type="button">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal de perfil de forma -->
     <div class="form-profile-modal" id="form-profile-modal" style="display: none;">
         <div class="form-profile-modal-content">
