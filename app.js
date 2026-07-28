@@ -3,6 +3,74 @@ console.log('✓ app.js cargado');
 // ==================== Configuración ==================== 
 const DEFAULT_API_URL = 'http://localhost:8080';
 const DEFAULT_REFRESH_INTERVAL = 30; // segundos
+const FINAL_VIEW_SORT_PREFS_KEY = 'finalViewSortPreferences';
+const pendingSaveActions = new Set();
+
+function getDefaultFinalViewSortPreferences() {
+    return {
+        tables: {},
+        studentForms: { sortKey: 'name', sortDirection: 'asc' },
+        formStudents: { sortKey: 'name', sortDirection: 'asc' },
+        gradeStudents: { sortKey: 'name', sortDirection: 'asc' },
+        gradeForms: { sortKey: 'name', sortDirection: 'asc' },
+    };
+}
+
+function loadFinalViewSortPreferences() {
+    const defaults = getDefaultFinalViewSortPreferences();
+
+    try {
+        const rawValue = localStorage.getItem(FINAL_VIEW_SORT_PREFS_KEY);
+        if (!rawValue) {
+            return defaults;
+        }
+
+        const parsed = JSON.parse(rawValue);
+        return {
+            ...defaults,
+            ...parsed,
+            studentForms: { ...defaults.studentForms, ...(parsed?.studentForms || {}) },
+            formStudents: { ...defaults.formStudents, ...(parsed?.formStudents || {}) },
+            gradeStudents: { ...defaults.gradeStudents, ...(parsed?.gradeStudents || {}) },
+            gradeForms: { ...defaults.gradeForms, ...(parsed?.gradeForms || {}) },
+            tables: parsed?.tables && typeof parsed.tables === 'object' ? parsed.tables : {},
+        };
+    } catch (error) {
+        console.warn('No se pudo leer preferencias de ordenamiento de vista final:', error);
+        return defaults;
+    }
+}
+
+function persistFinalViewSortPreferences() {
+    try {
+        localStorage.setItem(FINAL_VIEW_SORT_PREFS_KEY, JSON.stringify(finalViewState.sortPreferences));
+    } catch (error) {
+        console.warn('No se pudo guardar preferencias de ordenamiento de vista final:', error);
+    }
+}
+
+async function runProtectedSaveAction(actionKey, buttonId, callback) {
+    if (pendingSaveActions.has(actionKey)) {
+        showToast('Ya hay un guardado en proceso. Espera un momento.', 'info');
+        return;
+    }
+
+    pendingSaveActions.add(actionKey);
+    const button = buttonId ? document.getElementById(buttonId) : null;
+
+    if (button) {
+        button.disabled = true;
+    }
+
+    try {
+        await callback();
+    } finally {
+        if (button) {
+            button.disabled = false;
+        }
+        pendingSaveActions.delete(actionKey);
+    }
+}
 
 // Estado de la aplicación
 const appState = {
@@ -50,8 +118,18 @@ function setupEventListeners() {
     // ESC para cerrar vista final o modal
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
+            const gradeModal = document.getElementById('grade-profile-modal');
+            const formModal = document.getElementById('form-profile-modal');
+            const studentModal = document.getElementById('student-profile-modal');
             const modal = document.getElementById('final-add-modal');
-            if (modal && modal.style.display === 'flex') {
+
+            if (gradeModal && gradeModal.style.display === 'flex') {
+                closeGradeProfileModal();
+            } else if (formModal && formModal.style.display === 'flex') {
+                closeFormProfileModal();
+            } else if (studentModal && studentModal.style.display === 'flex') {
+                closeStudentProfileModal();
+            } else if (modal && modal.style.display === 'flex') {
                 closeFinalAddDialog();
             } else {
                 closeFinalView();
@@ -96,6 +174,10 @@ function setupEventListeners() {
     document.querySelectorAll('.final-tab-btn').forEach(btn => {
         btn.addEventListener('click', handleFinalTabClick);
     });
+
+    setupStudentProfileEventListeners();
+    setupFormProfileEventListeners();
+    setupGradeProfileEventListeners();
 }
 
 async function initializeSession() {
@@ -309,17 +391,126 @@ function handleFinalTabClick(e) {
 }
 
 // ==================== Final View Data Loading ====================
+const initialFinalViewSortPreferences = loadFinalViewSortPreferences();
+
 const finalViewState = {
+    sortPreferences: initialFinalViewSortPreferences,
     currentTable: null,
     currentColumns: [],
     currentData: [],
+    tableSort: initialFinalViewSortPreferences.tables || {},
     editingRowId: null,
-    editingMode: false
+    editingMode: false,
+    selectedStudent: null,
+    selectedForm: null,
+    selectedGrade: null,
+    studentForms: {
+        forms: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        sortKey: initialFinalViewSortPreferences.studentForms.sortKey,
+        sortDirection: initialFinalViewSortPreferences.studentForms.sortDirection,
+    },
+    formStudents: {
+        links: [],
+        students: [],
+        loaded: false,
+        sortKey: initialFinalViewSortPreferences.formStudents.sortKey,
+        sortDirection: initialFinalViewSortPreferences.formStudents.sortDirection,
+    },
+    gradeStudents: {
+        students: [],
+        loaded: false,
+        sortKey: initialFinalViewSortPreferences.gradeStudents.sortKey,
+        sortDirection: initialFinalViewSortPreferences.gradeStudents.sortDirection,
+    },
+    gradeForms: {
+        forms: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        sortKey: initialFinalViewSortPreferences.gradeForms.sortKey,
+        sortDirection: initialFinalViewSortPreferences.gradeForms.sortDirection,
+    },
 };
 
+function normalizeSortableValue(value) {
+    if (value === null || value === undefined) return '';
+    return String(value).toLowerCase();
+}
+
+function compareSortableValues(a, b) {
+    const valueA = normalizeSortableValue(a);
+    const valueB = normalizeSortableValue(b);
+
+    const numA = Number(valueA);
+    const numB = Number(valueB);
+    const bothNumeric = Number.isFinite(numA) && Number.isFinite(numB) && valueA !== '' && valueB !== '';
+
+    if (bothNumeric) {
+        return numA - numB;
+    }
+
+    return valueA.localeCompare(valueB, 'es', { numeric: true, sensitivity: 'base' });
+}
+
+function getSortIndicator(direction) {
+    return direction === 'desc' ? ' ↓' : ' ↑';
+}
+
+function sortListByDirection(list, direction, selector) {
+    const sortedList = [...(list || [])].sort((left, right) => compareSortableValues(selector(left), selector(right)));
+    return direction === 'desc' ? sortedList.reverse() : sortedList;
+}
+
+function updateListSortPreference(sectionKey, sortKey, sortDirection) {
+    if (!finalViewState.sortPreferences[sectionKey]) {
+        finalViewState.sortPreferences[sectionKey] = {};
+    }
+
+    finalViewState.sortPreferences[sectionKey] = {
+        sortKey,
+        sortDirection,
+    };
+
+    persistFinalViewSortPreferences();
+}
+
+function toggleTableSort(tableName, columnName) {
+    const currentSort = finalViewState.tableSort[tableName] || { column: null, direction: 'asc' };
+    const nextDirection = currentSort.column === columnName && currentSort.direction === 'asc' ? 'desc' : 'asc';
+    finalViewState.tableSort[tableName] = { column: columnName, direction: nextDirection };
+    finalViewState.sortPreferences.tables = {
+        ...(finalViewState.sortPreferences.tables || {}),
+        [tableName]: { column: columnName, direction: nextDirection },
+    };
+    persistFinalViewSortPreferences();
+    loadFinalTabData(tableName);
+}
+
+function getPrimaryKeyFields(columns) {
+    return (columns || []).filter(col => col.primaryKey).map(col => col.name);
+}
+
 function getPrimaryKeyField(columns) {
-    const pkColumn = columns.find(col => col.primaryKey);
-    return pkColumn ? pkColumn.name : 'id';
+    const pkFields = getPrimaryKeyFields(columns);
+    return pkFields[0] || 'id';
+}
+
+function buildCompositeRowId(row, pkFields) {
+    if (!row || !pkFields || pkFields.length === 0) {
+        return row?.id ?? '';
+    }
+
+    const values = pkFields.map(field => row[field]);
+    if (values.some(value => value === undefined || value === null)) {
+        return row?.id ?? '';
+    }
+
+    return values.map(value => String(value)).join(',');
 }
 
 async function loadFinalTabData(tableName) {
@@ -410,16 +601,37 @@ function renderFinalTable(tableName, columns, rows) {
     }).slice(0, 8);
     
     const pkField = getPrimaryKeyField(columns);
+    const pkFields = getPrimaryKeyFields(columns);
+    const tableSort = finalViewState.tableSort[tableName] || { column: null, direction: 'asc' };
+    const sortedRows = [...rows];
+
+    if (tableSort.column) {
+        sortedRows.sort((leftRow, rightRow) => {
+            const leftValue = leftRow[tableSort.column];
+            const rightValue = rightRow[tableSort.column];
+            return compareSortableValues(leftValue, rightValue);
+        });
+
+        if (tableSort.direction === 'desc') {
+            sortedRows.reverse();
+        }
+    }
     
     let html = '<table class="final-data-table"><thead><tr>';
     displayColumns.forEach(col => {
-        html += `<th>${col.name}</th>`;
+        const isActiveSort = tableSort.column === col.name;
+        const sortIndicator = isActiveSort ? getSortIndicator(tableSort.direction) : '';
+        html += `<th class="final-sortable-header" data-sort-column="${col.name}" title="Ordenar por ${col.name}">${col.name}${sortIndicator}</th>`;
     });
     html += '<th>Acciones</th></tr></thead><tbody>';
     
-    rows.forEach(row => {
-        const rowId = row[pkField];
-        html += '<tr>';
+    sortedRows.forEach(row => {
+        const rowId = buildCompositeRowId(row, pkFields) || row[pkField];
+        const isProfileClickableTable = tableName === 'alumnos' || tableName === 'formas' || tableName === 'grados';
+        const rowClass = isProfileClickableTable ? ' class="final-row-clickable"' : '';
+        const rowDataAttr = isProfileClickableTable ? ` data-row-id="${rowId}"` : '';
+
+        html += `<tr${rowClass}${rowDataAttr}>`;
         displayColumns.forEach(col => {
             const value = row[col.name];
             const displayValue = getForeignKeyDisplayValue(tableName, col.name, value);
@@ -438,8 +650,12 @@ function renderFinalTable(tableName, columns, rows) {
     // Agregar event listeners a los botones
     tableContainer.querySelectorAll('.final-btn-edit').forEach(btn => {
         btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
             const rowId = btn.dataset.rowId;
-            const row = rows.find(r => r[pkField] == rowId);
+            const row = sortedRows.find(r => {
+                const currentRowId = buildCompositeRowId(r, pkFields) || r[pkField];
+                return String(currentRowId) === String(rowId);
+            });
             if (row) {
                 await openFinalEditDialog(tableName, row);
             }
@@ -448,12 +664,1285 @@ function renderFinalTable(tableName, columns, rows) {
     
     tableContainer.querySelectorAll('.final-btn-delete').forEach(btn => {
         btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
             const rowId = btn.dataset.rowId;
             if (confirm(`¿Estás seguro de que deseas eliminar este registro?`)) {
                 await deleteFinalRow(tableName, rowId, pkField);
             }
         });
     });
+
+    if (tableName === 'alumnos' || tableName === 'formas' || tableName === 'grados') {
+        tableContainer.querySelectorAll('tbody tr.final-row-clickable').forEach(tr => {
+            tr.addEventListener('click', async () => {
+                const rowId = tr.dataset.rowId;
+                const selectedRow = sortedRows.find(r => {
+                    const currentRowId = buildCompositeRowId(r, pkFields) || r[pkField];
+                    return String(currentRowId) === String(rowId);
+                });
+
+                if (!selectedRow) {
+                    return;
+                }
+
+                if (tableName === 'alumnos') {
+                    await openStudentProfileModal(selectedRow);
+                    return;
+                }
+
+                if (tableName === 'formas') {
+                    await openFormProfileModal(selectedRow);
+                    return;
+                }
+
+                if (tableName === 'grados') {
+                    await openGradeProfileModal(selectedRow);
+                    return;
+                }
+            });
+        });
+    }
+
+    tableContainer.querySelectorAll('th.final-sortable-header').forEach(th => {
+        th.addEventListener('click', () => {
+            const columnName = th.dataset.sortColumn;
+            if (!columnName) return;
+            toggleTableSort(tableName, columnName);
+        });
+    });
+}
+
+async function openGradeProfileModal(gradeRow) {
+    const modal = document.getElementById('grade-profile-modal');
+    if (!modal) return;
+
+    finalViewState.selectedGrade = gradeRow;
+    finalViewState.gradeStudents = {
+        students: [],
+        loaded: false,
+        sortKey: finalViewState.sortPreferences.gradeStudents.sortKey,
+        sortDirection: finalViewState.sortPreferences.gradeStudents.sortDirection,
+    };
+    finalViewState.gradeForms = {
+        forms: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        sortKey: finalViewState.sortPreferences.gradeForms.sortKey,
+        sortDirection: finalViewState.sortPreferences.gradeForms.sortDirection,
+    };
+
+    const gradeName = gradeRow.nombre || `Grado ${gradeRow.id_grado}`;
+    document.getElementById('grade-profile-title').textContent = gradeName;
+    document.getElementById('grade-profile-subtitle').textContent = `ID: ${gradeRow.id_grado} · Consulta y edita este grado`;
+
+    renderGradeInfoPanel(gradeRow);
+    switchGradeProfilePanel('info');
+    modal.style.display = 'flex';
+}
+
+function closeGradeProfileModal() {
+    const modal = document.getElementById('grade-profile-modal');
+    if (!modal) return;
+
+    modal.style.display = 'none';
+    finalViewState.selectedGrade = null;
+    finalViewState.gradeStudents = {
+        students: [],
+        loaded: false,
+        sortKey: finalViewState.sortPreferences.gradeStudents.sortKey,
+        sortDirection: finalViewState.sortPreferences.gradeStudents.sortDirection,
+    };
+    finalViewState.gradeForms = {
+        forms: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        sortKey: finalViewState.sortPreferences.gradeForms.sortKey,
+        sortDirection: finalViewState.sortPreferences.gradeForms.sortDirection,
+    };
+
+    const studentsList = document.getElementById('grade-students-list');
+    if (studentsList) {
+        studentsList.innerHTML = '';
+    }
+
+    const formsList = document.getElementById('grade-forms-list');
+    if (formsList) {
+        formsList.innerHTML = '';
+    }
+}
+
+function renderGradeInfoPanel(gradeRow) {
+    const panel = document.getElementById('grade-panel-info');
+    if (!panel) return;
+
+    const labels = {
+        id_grado: 'ID Grado',
+        nombre: 'Nombre',
+        descripcion: 'Descripcion',
+    };
+
+    const entries = Object.entries(gradeRow || {});
+    panel.innerHTML = `
+        <div class="grade-profile-info-grid">
+            ${entries.map(([field, value]) => {
+                const label = labels[field] || field;
+                const normalizedValue = value === null || value === undefined || value === '' ? '—' : String(value);
+                return `
+                    <div class="grade-profile-info-item">
+                        <span class="grade-profile-info-label">${label}</span>
+                        <span class="grade-profile-info-value">${normalizedValue}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function switchGradeProfilePanel(panelName) {
+    document.querySelectorAll('.grade-profile-menu-btn').forEach(btn => {
+        if (btn.dataset.panel === panelName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    document.querySelectorAll('.grade-profile-panel').forEach(panel => {
+        panel.classList.remove('active');
+    });
+
+    const panel = document.getElementById(`grade-panel-${panelName}`);
+    if (panel) {
+        panel.classList.add('active');
+    }
+
+    const manageBtn = document.getElementById('grade-manage-forms-btn');
+    const saveBtn = document.getElementById('grade-save-forms-btn');
+    const cancelBtn = document.getElementById('grade-cancel-forms-btn');
+
+    if (manageBtn) {
+        manageBtn.style.display = panelName === 'forms' ? 'inline-block' : 'none';
+    }
+    if (saveBtn) {
+        saveBtn.style.display = panelName === 'forms' && finalViewState.gradeForms.selectorOpen ? 'inline-block' : 'none';
+    }
+    if (cancelBtn) {
+        cancelBtn.style.display = panelName === 'forms' && finalViewState.gradeForms.selectorOpen ? 'inline-block' : 'none';
+    }
+}
+
+async function loadGradeStudentsPanel() {
+    const loading = document.getElementById('grade-students-loading');
+    const listContainer = document.getElementById('grade-students-list');
+    const selectedGrade = finalViewState.selectedGrade;
+
+    if (!listContainer || !selectedGrade) return;
+    if (finalViewState.gradeStudents.loaded) return;
+
+    try {
+        loading.style.display = 'flex';
+        listContainer.innerHTML = '';
+
+        const studentsRows = await apiCall('/api/database/tables/alumnos/rows?limit=3000');
+
+        finalViewState.gradeStudents = {
+            students: (studentsRows || []).filter(student => String(student.id_grado) === String(selectedGrade.id_grado)),
+            loaded: true,
+            sortKey: finalViewState.gradeStudents.sortKey || 'name',
+            sortDirection: finalViewState.gradeStudents.sortDirection || 'asc',
+        };
+
+        renderGradeStudentsList();
+    } catch (error) {
+        listContainer.innerHTML = '<p class="text-muted">No se pudo cargar la lista de alumnos.</p>';
+        showToast('No se pudieron cargar los alumnos de este grado', 'error');
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function renderGradeStudentsList() {
+    const listContainer = document.getElementById('grade-students-list');
+    const gradeStudentsState = finalViewState.gradeStudents;
+
+    if (!listContainer) return;
+
+    const students = gradeStudentsState.students || [];
+    const gradeSortKey = gradeStudentsState.sortKey || 'name';
+    const gradeSortDirection = gradeStudentsState.sortDirection || 'asc';
+
+    const sortedStudents = sortListByDirection(students, gradeSortDirection, student => {
+        if (gradeSortKey === 'matricula') return student.numero_matricula || '';
+        return [student.nombre, student.apellido].filter(Boolean).join(' ').trim() || student.numero_matricula || student.id_alumno;
+    });
+
+    const nameLabel = `Alumno${gradeSortKey === 'name' ? getSortIndicator(gradeSortDirection) : ''}`;
+    const matriculaLabel = `Matricula${gradeSortKey === 'matricula' ? getSortIndicator(gradeSortDirection) : ''}`;
+
+    listContainer.innerHTML = `
+        <div class="grade-students-summary">
+            Alumnos en este grado: <strong>${students.length}</strong>
+        </div>
+        <div class="list-sort-bar" id="grade-students-sort-bar">
+            <button type="button" class="list-sort-btn" data-grade-sort="name">${nameLabel}</button>
+            <button type="button" class="list-sort-btn" data-grade-sort="matricula">${matriculaLabel}</button>
+        </div>
+        <div class="grade-known-students">
+            ${sortedStudents.length === 0
+                ? '<p class="text-muted">Aun no hay alumnos registrados en este grado.</p>'
+                : sortedStudents.map(student => {
+                    const studentName = [student.nombre, student.apellido].filter(Boolean).join(' ').trim() || student.numero_matricula || `Alumno ${student.id_alumno}`;
+                    const matricula = student.numero_matricula || 'Sin matricula';
+
+                    return `
+                        <div class="grade-known-student-item">
+                            <span class="grade-known-student-name">${studentName}</span>
+                            <span class="grade-known-student-extra">${matricula}</span>
+                        </div>
+                    `;
+                }).join('')
+            }
+        </div>
+    `;
+
+    listContainer.querySelectorAll('[data-grade-sort]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const selectedKey = btn.dataset.gradeSort;
+            if (!selectedKey) return;
+
+            const isSameKey = finalViewState.gradeStudents.sortKey === selectedKey;
+            finalViewState.gradeStudents.sortDirection = isSameKey && finalViewState.gradeStudents.sortDirection === 'asc' ? 'desc' : 'asc';
+            finalViewState.gradeStudents.sortKey = selectedKey;
+            updateListSortPreference('gradeStudents', finalViewState.gradeStudents.sortKey, finalViewState.gradeStudents.sortDirection);
+            renderGradeStudentsList();
+        });
+    });
+}
+
+async function loadGradeFormsPanel() {
+    const loading = document.getElementById('grade-forms-loading');
+    const listContainer = document.getElementById('grade-forms-list');
+    const selectedGrade = finalViewState.selectedGrade;
+
+    if (!listContainer || !selectedGrade) return;
+    if (finalViewState.gradeForms.loaded) return;
+
+    try {
+        loading.style.display = 'flex';
+        listContainer.innerHTML = '';
+
+        const [formsRows, gradoFormaRows, gradoFormaColumns] = await Promise.all([
+            apiCall('/api/database/tables/formas/rows?limit=2000'),
+            apiCall('/api/database/tables/grado_forma/rows?limit=4000'),
+            apiCall('/api/database/tables/grado_forma/columns'),
+        ]);
+
+        finalViewState.gradeForms = {
+            forms: formsRows || [],
+            links: (gradoFormaRows || []).filter(link => String(link.id_grado) === String(selectedGrade.id_grado)),
+            columns: gradoFormaColumns || [],
+            loaded: true,
+            selectorOpen: false,
+            sortKey: finalViewState.gradeForms.sortKey || finalViewState.sortPreferences.gradeForms.sortKey,
+            sortDirection: finalViewState.gradeForms.sortDirection || finalViewState.sortPreferences.gradeForms.sortDirection,
+        };
+
+        renderGradeFormsList();
+    } catch (error) {
+        listContainer.innerHTML = '<p class="text-muted">No se pudieron cargar las formas del grado.</p>';
+        showToast('No se pudieron cargar las formas requeridas del grado', 'error');
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function renderGradeFormsList() {
+    const listContainer = document.getElementById('grade-forms-list');
+    const gradeFormsState = finalViewState.gradeForms;
+
+    if (!listContainer) return;
+
+    if (!gradeFormsState.forms || gradeFormsState.forms.length === 0) {
+        listContainer.innerHTML = '<p class="text-muted">No hay formas disponibles.</p>';
+        return;
+    }
+
+    const assignedByFormaId = {};
+    (gradeFormsState.links || []).forEach(link => {
+        assignedByFormaId[String(link.id_forma)] = link;
+    });
+
+    const assignedForms = (gradeFormsState.forms || []).filter(forma => Boolean(assignedByFormaId[String(forma.id_forma)]));
+
+    const formsSortKey = gradeFormsState.sortKey || 'name';
+    const formsSortDirection = gradeFormsState.sortDirection || 'asc';
+    const sortedAssignedForms = sortListByDirection(assignedForms, formsSortDirection, forma => {
+        if (formsSortKey === 'id') return forma.id_forma;
+        return forma.nombre || forma.id_forma;
+    });
+
+    const nameLabel = `Forma${formsSortKey === 'name' ? getSortIndicator(formsSortDirection) : ''}`;
+    const idLabel = `ID${formsSortKey === 'id' ? getSortIndicator(formsSortDirection) : ''}`;
+
+    listContainer.innerHTML = `
+        <div class="grade-students-summary">
+            Formas requeridas: <strong>${assignedForms.length}</strong> de ${gradeFormsState.forms.length}
+        </div>
+        <div class="list-sort-bar" id="grade-forms-sort-bar">
+            <button type="button" class="list-sort-btn" data-grade-forms-sort="name">${nameLabel}</button>
+            <button type="button" class="list-sort-btn" data-grade-forms-sort="id">${idLabel}</button>
+        </div>
+        <div class="grade-known-forms">
+            ${sortedAssignedForms.length === 0
+                ? '<p class="text-muted">Este grado aun no tiene formas requeridas.</p>'
+                : sortedAssignedForms.map(forma => {
+                    const formaNombre = forma.nombre || `Forma ${forma.id_forma}`;
+
+                    return `
+                        <div class="grade-known-form-item">
+                            <span class="grade-known-form-name">${formaNombre}</span>
+                            <span class="grade-known-form-extra">ID ${forma.id_forma}</span>
+                        </div>
+                    `;
+                }).join('')
+            }
+        </div>
+        <div id="grade-forms-selector-container" style="display: none;"></div>
+    `;
+
+    listContainer.querySelectorAll('[data-grade-forms-sort]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const selectedKey = btn.dataset.gradeFormsSort;
+            if (!selectedKey) return;
+
+            const isSameKey = finalViewState.gradeForms.sortKey === selectedKey;
+            finalViewState.gradeForms.sortDirection = isSameKey && finalViewState.gradeForms.sortDirection === 'asc' ? 'desc' : 'asc';
+            finalViewState.gradeForms.sortKey = selectedKey;
+            updateListSortPreference('gradeForms', finalViewState.gradeForms.sortKey, finalViewState.gradeForms.sortDirection);
+            renderGradeFormsList();
+        });
+    });
+
+    if (gradeFormsState.selectorOpen) {
+        renderGradeFormsSelector();
+    }
+}
+
+function renderGradeFormsSelector() {
+    const selectorContainer = document.getElementById('grade-forms-selector-container');
+    const gradeFormsState = finalViewState.gradeForms;
+
+    if (!selectorContainer) return;
+
+    const assignedFormIds = new Set((gradeFormsState.links || []).map(link => String(link.id_forma)));
+    const formsSortKey = gradeFormsState.sortKey || 'name';
+    const formsSortDirection = gradeFormsState.sortDirection || 'asc';
+    const sortedForms = sortListByDirection(gradeFormsState.forms || [], formsSortDirection, forma => {
+        if (formsSortKey === 'id') return forma.id_forma;
+        return forma.nombre || forma.id_forma;
+    });
+
+    selectorContainer.style.display = 'block';
+    selectorContainer.innerHTML = `
+        <div class="student-forms-selector-title">Selecciona las formas requeridas para este grado</div>
+        <div class="student-forms-grid">
+            ${sortedForms.map(forma => {
+                const formaId = String(forma.id_forma);
+                const checked = assignedFormIds.has(formaId) ? 'checked' : '';
+                const formaNombre = forma.nombre || `Forma ${forma.id_forma}`;
+
+                return `
+                    <label class="student-form-item student-form-item-checkbox-only">
+                        <div class="student-form-main">
+                            <input type="checkbox" class="grade-form-checkbox" data-grade-forma-id="${formaId}" ${checked}>
+                            <span class="student-form-name">${formaNombre}</span>
+                        </div>
+                    </label>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function openGradeFormsSelector() {
+    finalViewState.gradeForms.selectorOpen = true;
+    renderGradeFormsList();
+    switchGradeProfilePanel('forms');
+}
+
+function cancelGradeFormsSelection() {
+    finalViewState.gradeForms.selectorOpen = false;
+    renderGradeFormsList();
+    switchGradeProfilePanel('forms');
+}
+
+async function saveGradeForms() {
+    return runProtectedSaveAction('grade-forms-save', 'grade-save-forms-btn', async () => {
+        if (!isAdminSession()) {
+            showToast('Solo administradores pueden modificar formas requeridas del grado', 'error');
+            return;
+        }
+
+        const selectedGrade = finalViewState.selectedGrade;
+        const gradeFormsState = finalViewState.gradeForms;
+
+        if (!selectedGrade || !gradeFormsState.loaded) {
+            showToast('No hay datos de formas para guardar', 'error');
+            return;
+        }
+
+        if (!gradeFormsState.selectorOpen) {
+            showToast('Primero entra a Agregar/Quitar formas para guardar cambios', 'info');
+            return;
+        }
+
+        const checkboxes = Array.from(document.querySelectorAll('.grade-form-checkbox'));
+        const selectedFormaIds = checkboxes
+            .filter(checkbox => checkbox.checked)
+            .map(checkbox => String(checkbox.dataset.gradeFormaId));
+
+        const existingByFormaId = {};
+        (gradeFormsState.links || []).forEach(link => {
+            existingByFormaId[String(link.id_forma)] = link;
+        });
+
+        const existingFormaIds = Object.keys(existingByFormaId);
+        const toAdd = selectedFormaIds.filter(id => !existingFormaIds.includes(id));
+        const toRemove = existingFormaIds.filter(id => !selectedFormaIds.includes(id));
+
+        if (toAdd.length === 0 && toRemove.length === 0) {
+            showToast('No hay cambios en las formas requeridas', 'info');
+            return;
+        }
+
+        try {
+            for (const formaId of toAdd) {
+                await apiCall('/api/database/tables/grado_forma/rows', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        id_grado: selectedGrade.id_grado,
+                        id_forma: Number(formaId),
+                    }),
+                });
+            }
+
+            const pkFields = getPrimaryKeyFields(gradeFormsState.columns);
+            for (const formaId of toRemove) {
+                const linkRow = existingByFormaId[formaId];
+                const rowId = buildCompositeRowId(linkRow, pkFields);
+
+                if (!rowId) {
+                    throw new Error('No se pudo determinar la llave de una relacion grado-forma');
+                }
+
+                await apiCall(`/api/database/tables/grado_forma/rows/${encodeURIComponent(rowId)}`, {
+                    method: 'DELETE',
+                });
+            }
+
+            showToast('Formas requeridas del grado actualizadas', 'success');
+            finalViewState.gradeForms.loaded = false;
+            finalViewState.gradeForms.selectorOpen = false;
+            await loadGradeFormsPanel();
+            switchGradeProfilePanel('forms');
+            await loadFinalTabData('grados');
+        } catch (error) {
+            console.error('Error actualizando formas requeridas del grado:', error);
+            showToast(`Error al actualizar formas requeridas: ${error.message || 'Intenta nuevamente'}`, 'error');
+        }
+    });
+}
+
+function setupGradeProfileEventListeners() {
+    const modal = document.getElementById('grade-profile-modal');
+    const closeBtn = document.getElementById('grade-profile-close-btn');
+    const closeFooterBtn = document.getElementById('grade-close-btn');
+    const editBtn = document.getElementById('grade-edit-btn');
+    const manageFormsBtn = document.getElementById('grade-manage-forms-btn');
+    const saveFormsBtn = document.getElementById('grade-save-forms-btn');
+    const cancelFormsBtn = document.getElementById('grade-cancel-forms-btn');
+    const menuInfoBtn = document.getElementById('grade-menu-info');
+    const menuStudentsBtn = document.getElementById('grade-menu-students');
+    const menuFormsBtn = document.getElementById('grade-menu-forms');
+
+    if (!modal) return;
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeGradeProfileModal);
+    }
+
+    if (closeFooterBtn) {
+        closeFooterBtn.addEventListener('click', closeGradeProfileModal);
+    }
+
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'grade-profile-modal') {
+            closeGradeProfileModal();
+        }
+    });
+
+    if (menuInfoBtn) {
+        menuInfoBtn.addEventListener('click', () => {
+            switchGradeProfilePanel('info');
+        });
+    }
+
+    if (menuStudentsBtn) {
+        menuStudentsBtn.addEventListener('click', async () => {
+            switchGradeProfilePanel('students');
+            await loadGradeStudentsPanel();
+        });
+    }
+
+    if (menuFormsBtn) {
+        menuFormsBtn.addEventListener('click', async () => {
+            switchGradeProfilePanel('forms');
+            await loadGradeFormsPanel();
+        });
+    }
+
+    if (manageFormsBtn) {
+        manageFormsBtn.addEventListener('click', async () => {
+            switchGradeProfilePanel('forms');
+            await loadGradeFormsPanel();
+            openGradeFormsSelector();
+        });
+    }
+
+    if (saveFormsBtn) {
+        saveFormsBtn.addEventListener('click', saveGradeForms);
+    }
+
+    if (cancelFormsBtn) {
+        cancelFormsBtn.addEventListener('click', cancelGradeFormsSelection);
+    }
+
+    if (editBtn) {
+        editBtn.addEventListener('click', async () => {
+            if (!isAdminSession()) {
+                showToast('Solo administradores pueden editar grados', 'error');
+                return;
+            }
+
+            const selectedGrade = finalViewState.selectedGrade;
+            if (!selectedGrade) {
+                showToast('No hay grado seleccionado', 'error');
+                return;
+            }
+
+            closeGradeProfileModal();
+            await openFinalEditDialog('grados', selectedGrade);
+        });
+    }
+}
+
+async function openFormProfileModal(formRow) {
+    const modal = document.getElementById('form-profile-modal');
+    if (!modal) return;
+
+    finalViewState.selectedForm = formRow;
+    finalViewState.formStudents = {
+        links: [],
+        students: [],
+        loaded: false,
+        sortKey: finalViewState.sortPreferences.formStudents.sortKey,
+        sortDirection: finalViewState.sortPreferences.formStudents.sortDirection,
+    };
+
+    const formName = formRow.nombre || `Forma ${formRow.id_forma}`;
+    document.getElementById('form-profile-title').textContent = formName;
+    document.getElementById('form-profile-subtitle').textContent = `ID: ${formRow.id_forma} · Consulta y edita esta forma`;
+
+    renderFormInfoPanel(formRow);
+    switchFormProfilePanel('info');
+    modal.style.display = 'flex';
+}
+
+function closeFormProfileModal() {
+    const modal = document.getElementById('form-profile-modal');
+    if (!modal) return;
+
+    modal.style.display = 'none';
+    finalViewState.selectedForm = null;
+    finalViewState.formStudents = {
+        links: [],
+        students: [],
+        loaded: false,
+        sortKey: finalViewState.sortPreferences.formStudents.sortKey,
+        sortDirection: finalViewState.sortPreferences.formStudents.sortDirection,
+    };
+
+    const studentsList = document.getElementById('form-students-list');
+    if (studentsList) {
+        studentsList.innerHTML = '';
+    }
+}
+
+function renderFormInfoPanel(formRow) {
+    const panel = document.getElementById('form-panel-info');
+    if (!panel) return;
+
+    const labels = {
+        id_forma: 'ID Forma',
+        nombre: 'Nombre',
+        descripcion: 'Descripcion',
+        id_estilo: 'ID Estilo',
+    };
+
+    const entries = Object.entries(formRow || {});
+    panel.innerHTML = `
+        <div class="form-profile-info-grid">
+            ${entries.map(([field, value]) => {
+                const label = labels[field] || field;
+                const normalizedValue = value === null || value === undefined || value === '' ? '—' : String(value);
+                return `
+                    <div class="form-profile-info-item">
+                        <span class="form-profile-info-label">${label}</span>
+                        <span class="form-profile-info-value">${normalizedValue}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function switchFormProfilePanel(panelName) {
+    document.querySelectorAll('.form-profile-menu-btn').forEach(btn => {
+        if (btn.dataset.panel === panelName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    document.querySelectorAll('.form-profile-panel').forEach(panel => {
+        panel.classList.remove('active');
+    });
+
+    const panel = document.getElementById(`form-panel-${panelName}`);
+    if (panel) {
+        panel.classList.add('active');
+    }
+}
+
+async function loadFormStudentsPanel() {
+    const loading = document.getElementById('form-students-loading');
+    const listContainer = document.getElementById('form-students-list');
+    const selectedForm = finalViewState.selectedForm;
+
+    if (!listContainer || !selectedForm) return;
+    if (finalViewState.formStudents.loaded) return;
+
+    try {
+        loading.style.display = 'flex';
+        listContainer.innerHTML = '';
+
+        const [studentsRows, alumnoFormaRows] = await Promise.all([
+            apiCall('/api/database/tables/alumnos/rows?limit=3000'),
+            apiCall('/api/database/tables/alumno_forma/rows?limit=3000'),
+        ]);
+
+        finalViewState.formStudents = {
+            links: (alumnoFormaRows || []).filter(link => String(link.id_forma) === String(selectedForm.id_forma)),
+            students: studentsRows || [],
+            loaded: true,
+            sortKey: finalViewState.formStudents.sortKey || 'name',
+            sortDirection: finalViewState.formStudents.sortDirection || 'asc',
+        };
+
+        renderFormStudentsList();
+    } catch (error) {
+        listContainer.innerHTML = '<p class="text-muted">No se pudo cargar la lista de alumnos.</p>';
+        showToast('No se pudieron cargar los alumnos de esta forma', 'error');
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function renderFormStudentsList() {
+    const listContainer = document.getElementById('form-students-list');
+    const formStudentsState = finalViewState.formStudents;
+
+    if (!listContainer) return;
+
+    const studentsById = {};
+    (formStudentsState.students || []).forEach(student => {
+        studentsById[String(student.id_alumno)] = student;
+    });
+
+    const knownByLinks = (formStudentsState.links || []).map(link => {
+        const student = studentsById[String(link.id_alumno)];
+        const studentName = student
+            ? [student.nombre, student.apellido].filter(Boolean).join(' ').trim() || student.numero_matricula || `Alumno ${student.id_alumno}`
+            : `Alumno ${link.id_alumno}`;
+        const fechaAprendida = link.fecha_aprendida ? String(link.fecha_aprendida).slice(0, 10) : 'Sin fecha';
+
+        return {
+            id_alumno: link.id_alumno,
+            nombre: studentName,
+            fecha_aprendida: fechaAprendida,
+        };
+    });
+
+    const formSortKey = formStudentsState.sortKey || 'name';
+    const formSortDirection = formStudentsState.sortDirection || 'asc';
+    const sortedKnownByLinks = sortListByDirection(knownByLinks, formSortDirection, item => {
+        if (formSortKey === 'date') return item.fecha_aprendida === 'Sin fecha' ? '9999-12-31' : item.fecha_aprendida;
+        return item.nombre;
+    });
+
+    const nameLabel = `Alumno${formSortKey === 'name' ? getSortIndicator(formSortDirection) : ''}`;
+    const dateLabel = `Fecha aprendida${formSortKey === 'date' ? getSortIndicator(formSortDirection) : ''}`;
+
+    listContainer.innerHTML = `
+        <div class="form-students-summary">
+            Alumnos que saben esta forma: <strong>${knownByLinks.length}</strong>
+        </div>
+        <div class="list-sort-bar" id="form-students-sort-bar">
+            <button type="button" class="list-sort-btn" data-form-sort="name">${nameLabel}</button>
+            <button type="button" class="list-sort-btn" data-form-sort="date">${dateLabel}</button>
+        </div>
+        <div class="form-known-students">
+            ${sortedKnownByLinks.length === 0
+                ? '<p class="text-muted">Aun no hay alumnos registrados para esta forma.</p>'
+                : sortedKnownByLinks.map(item => {
+                    return `
+                        <div class="form-known-student-item">
+                            <span class="form-known-student-name">${item.nombre}</span>
+                            <span class="form-known-student-date">${item.fecha_aprendida}</span>
+                        </div>
+                    `;
+                }).join('')
+            }
+        </div>
+    `;
+
+    listContainer.querySelectorAll('[data-form-sort]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const selectedKey = btn.dataset.formSort;
+            if (!selectedKey) return;
+
+            const isSameKey = finalViewState.formStudents.sortKey === selectedKey;
+            finalViewState.formStudents.sortDirection = isSameKey && finalViewState.formStudents.sortDirection === 'asc' ? 'desc' : 'asc';
+            finalViewState.formStudents.sortKey = selectedKey;
+            updateListSortPreference('formStudents', finalViewState.formStudents.sortKey, finalViewState.formStudents.sortDirection);
+            renderFormStudentsList();
+        });
+    });
+}
+
+function setupFormProfileEventListeners() {
+    const modal = document.getElementById('form-profile-modal');
+    const closeBtn = document.getElementById('form-profile-close-btn');
+    const closeFooterBtn = document.getElementById('form-close-btn');
+    const editBtn = document.getElementById('form-edit-btn');
+    const menuInfoBtn = document.getElementById('form-menu-info');
+    const menuStudentsBtn = document.getElementById('form-menu-students');
+
+    if (!modal) return;
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeFormProfileModal);
+    }
+
+    if (closeFooterBtn) {
+        closeFooterBtn.addEventListener('click', closeFormProfileModal);
+    }
+
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'form-profile-modal') {
+            closeFormProfileModal();
+        }
+    });
+
+    if (menuInfoBtn) {
+        menuInfoBtn.addEventListener('click', () => {
+            switchFormProfilePanel('info');
+        });
+    }
+
+    if (menuStudentsBtn) {
+        menuStudentsBtn.addEventListener('click', async () => {
+            switchFormProfilePanel('students');
+            await loadFormStudentsPanel();
+        });
+    }
+
+    if (editBtn) {
+        editBtn.addEventListener('click', async () => {
+            if (!isAdminSession()) {
+                showToast('Solo administradores pueden editar formas', 'error');
+                return;
+            }
+
+            const selectedForm = finalViewState.selectedForm;
+            if (!selectedForm) {
+                showToast('No hay forma seleccionada', 'error');
+                return;
+            }
+
+            closeFormProfileModal();
+            await openFinalEditDialog('formas', selectedForm);
+        });
+    }
+}
+
+async function openStudentProfileModal(studentRow) {
+    const modal = document.getElementById('student-profile-modal');
+    if (!modal) return;
+
+    finalViewState.selectedStudent = studentRow;
+    finalViewState.studentForms = {
+        forms: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        sortKey: finalViewState.sortPreferences.studentForms.sortKey,
+        sortDirection: finalViewState.sortPreferences.studentForms.sortDirection,
+    };
+
+    const studentName = studentRow.nombre || studentRow.numero_matricula || `Alumno ${studentRow.id_alumno}`;
+    document.getElementById('student-profile-title').textContent = studentName;
+    document.getElementById('student-profile-subtitle').textContent = `ID: ${studentRow.id_alumno} · Gestiona su informacion y sus formas`;
+
+    renderStudentInfoPanel(studentRow);
+    switchStudentProfilePanel('info');
+    modal.style.display = 'flex';
+}
+
+function closeStudentProfileModal() {
+    const modal = document.getElementById('student-profile-modal');
+    if (!modal) return;
+
+    modal.style.display = 'none';
+    finalViewState.selectedStudent = null;
+    finalViewState.studentForms = {
+        forms: [],
+        links: [],
+        columns: [],
+        loaded: false,
+        selectorOpen: false,
+        sortKey: finalViewState.sortPreferences.studentForms.sortKey,
+        sortDirection: finalViewState.sortPreferences.studentForms.sortDirection,
+    };
+
+    const formsList = document.getElementById('student-forms-list');
+    if (formsList) {
+        formsList.innerHTML = '';
+    }
+}
+
+function renderStudentInfoPanel(studentRow) {
+    const panel = document.getElementById('student-panel-info');
+    if (!panel) return;
+
+    const labels = {
+        id_alumno: 'ID Alumno',
+        nombre: 'Nombre',
+        apellido: 'Apellido',
+        numero_matricula: 'Matricula',
+        correo_electronico: 'Correo',
+        telefono: 'Telefono',
+        fecha_nacimiento: 'Fecha de nacimiento',
+        id_grado: 'ID Grado',
+        fecha_inscripcion: 'Fecha de inscripcion',
+        estado: 'Estado',
+    };
+
+    const entries = Object.entries(studentRow || {});
+    panel.innerHTML = `
+        <div class="student-profile-info-grid">
+            ${entries.map(([field, value]) => {
+                const label = labels[field] || field;
+                const normalizedValue = value === null || value === undefined || value === '' ? '—' : String(value);
+                return `
+                    <div class="student-profile-info-item">
+                        <span class="student-profile-info-label">${label}</span>
+                        <span class="student-profile-info-value">${normalizedValue}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+function switchStudentProfilePanel(panelName) {
+    document.querySelectorAll('.student-profile-menu-btn').forEach(btn => {
+        if (btn.dataset.panel === panelName) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    document.querySelectorAll('.student-profile-panel').forEach(panel => {
+        panel.classList.remove('active');
+    });
+
+    const panel = document.getElementById(`student-panel-${panelName}`);
+    if (panel) {
+        panel.classList.add('active');
+    }
+
+    const saveBtn = document.getElementById('student-save-forms-btn');
+    const cancelBtn = document.getElementById('student-cancel-forms-btn');
+    if (saveBtn) {
+        const shouldShowSave = panelName === 'forms' && finalViewState.studentForms.selectorOpen;
+        saveBtn.style.display = shouldShowSave ? 'inline-block' : 'none';
+    }
+    if (cancelBtn) {
+        const shouldShowCancel = panelName === 'forms' && finalViewState.studentForms.selectorOpen;
+        cancelBtn.style.display = shouldShowCancel ? 'inline-block' : 'none';
+    }
+}
+
+async function loadStudentFormsPanel() {
+    const loading = document.getElementById('student-forms-loading');
+    const listContainer = document.getElementById('student-forms-list');
+    const student = finalViewState.selectedStudent;
+
+    if (!listContainer || !student) return;
+    if (finalViewState.studentForms.loaded) return;
+
+    try {
+        loading.style.display = 'flex';
+        listContainer.innerHTML = '';
+
+        const [formsRows, alumnoFormaRows, alumnoFormaColumns] = await Promise.all([
+            apiCall('/api/database/tables/formas/rows?limit=1000'),
+            apiCall('/api/database/tables/alumno_forma/rows?limit=3000'),
+            apiCall('/api/database/tables/alumno_forma/columns'),
+        ]);
+
+        finalViewState.studentForms = {
+            forms: formsRows || [],
+            links: (alumnoFormaRows || []).filter(link => String(link.id_alumno) === String(student.id_alumno)),
+            columns: alumnoFormaColumns || [],
+            loaded: true,
+            selectorOpen: false,
+            sortKey: finalViewState.studentForms.sortKey || 'name',
+            sortDirection: finalViewState.studentForms.sortDirection || 'asc',
+        };
+
+        renderStudentFormsList();
+    } catch (error) {
+        listContainer.innerHTML = '<p class="text-muted">No se pudieron cargar las formas.</p>';
+        showToast('No se pudieron cargar las formas del alumno', 'error');
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function renderStudentFormsList() {
+    const listContainer = document.getElementById('student-forms-list');
+    const studentFormsState = finalViewState.studentForms;
+
+    if (!listContainer) return;
+
+    if (!studentFormsState.forms || studentFormsState.forms.length === 0) {
+        listContainer.innerHTML = '<p class="text-muted">No hay formas disponibles.</p>';
+        return;
+    }
+
+    const assignedByFormaId = {};
+    (studentFormsState.links || []).forEach(link => {
+        assignedByFormaId[String(link.id_forma)] = link;
+    });
+
+    const assignedForms = (studentFormsState.forms || []).filter(forma => {
+        return Boolean(assignedByFormaId[String(forma.id_forma)]);
+    });
+
+    const studentSortKey = studentFormsState.sortKey || 'name';
+    const studentSortDirection = studentFormsState.sortDirection || 'asc';
+    const sortedAssignedForms = sortListByDirection(assignedForms, studentSortDirection, forma => {
+        if (studentSortKey === 'date') {
+            const linked = assignedByFormaId[String(forma.id_forma)];
+            return linked?.fecha_aprendida ? String(linked.fecha_aprendida).slice(0, 10) : '9999-12-31';
+        }
+        return forma.nombre || forma.id_forma;
+    });
+
+    const nameLabel = `Forma${studentSortKey === 'name' ? getSortIndicator(studentSortDirection) : ''}`;
+    const dateLabel = `Fecha aprendida${studentSortKey === 'date' ? getSortIndicator(studentSortDirection) : ''}`;
+
+    listContainer.innerHTML = `
+        <div class="student-forms-summary">
+            Formas asignadas: <strong>${Object.keys(assignedByFormaId).length}</strong> de ${studentFormsState.forms.length}
+        </div>
+        <div class="list-sort-bar" id="student-forms-sort-bar">
+            <button type="button" class="list-sort-btn" data-student-form-sort="name">${nameLabel}</button>
+            <button type="button" class="list-sort-btn" data-student-form-sort="date">${dateLabel}</button>
+        </div>
+        <div class="student-known-forms">
+            ${sortedAssignedForms.length === 0
+                ? '<p class="text-muted">Este alumno aun no tiene formas registradas.</p>'
+                : sortedAssignedForms.map(forma => {
+                    const formaId = String(forma.id_forma);
+                    const assigned = assignedByFormaId[formaId];
+                    const fechaAprendida = assigned?.fecha_aprendida ? String(assigned.fecha_aprendida).slice(0, 10) : 'Sin fecha';
+                    const formaNombre = forma.nombre || `Forma ${forma.id_forma}`;
+
+                    return `
+                        <div class="student-known-form-item">
+                            <span class="student-known-form-name">${formaNombre}</span>
+                            <span class="student-known-form-date">${fechaAprendida}</span>
+                        </div>
+                    `;
+                }).join('')
+            }
+        </div>
+        <div id="student-forms-selector-container" style="display: none;"></div>
+    `;
+
+    listContainer.querySelectorAll('[data-student-form-sort]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const selectedKey = btn.dataset.studentFormSort;
+            if (!selectedKey) return;
+
+            const isSameKey = finalViewState.studentForms.sortKey === selectedKey;
+            finalViewState.studentForms.sortDirection = isSameKey && finalViewState.studentForms.sortDirection === 'asc' ? 'desc' : 'asc';
+            finalViewState.studentForms.sortKey = selectedKey;
+            updateListSortPreference('studentForms', finalViewState.studentForms.sortKey, finalViewState.studentForms.sortDirection);
+            renderStudentFormsList();
+        });
+    });
+
+    if (studentFormsState.selectorOpen) {
+        renderStudentFormsSelector();
+    }
+}
+
+function renderStudentFormsSelector() {
+    const selectorContainer = document.getElementById('student-forms-selector-container');
+    const studentFormsState = finalViewState.studentForms;
+
+    if (!selectorContainer) return;
+
+    const assignedFormIds = new Set((studentFormsState.links || []).map(link => String(link.id_forma)));
+    const studentSortKey = studentFormsState.sortKey || 'name';
+    const studentSortDirection = studentFormsState.sortDirection || 'asc';
+    const sortedForms = sortListByDirection(studentFormsState.forms || [], studentSortDirection, forma => {
+        if (studentSortKey === 'date') {
+            const assignedLink = (studentFormsState.links || []).find(link => String(link.id_forma) === String(forma.id_forma));
+            return assignedLink?.fecha_aprendida ? String(assignedLink.fecha_aprendida).slice(0, 10) : '9999-12-31';
+        }
+        return forma.nombre || forma.id_forma;
+    });
+
+    selectorContainer.style.display = 'block';
+    selectorContainer.innerHTML = `
+        <div class="student-forms-selector-title">Selecciona las formas que sabe el alumno</div>
+        <div class="student-forms-grid">
+            ${sortedForms.map(forma => {
+                const formaId = String(forma.id_forma);
+                const checked = assignedFormIds.has(formaId) ? 'checked' : '';
+                const formaNombre = forma.nombre || `Forma ${forma.id_forma}`;
+                const assignedLink = (studentFormsState.links || []).find(link => String(link.id_forma) === formaId);
+                const fechaAprendida = assignedLink?.fecha_aprendida ? String(assignedLink.fecha_aprendida).slice(0, 10) : '';
+
+                return `
+                    <label class="student-form-item student-form-item-checkbox-only">
+                        <div class="student-form-main">
+                            <input type="checkbox" class="student-form-checkbox" data-forma-id="${formaId}" ${checked}>
+                            <span class="student-form-name">${formaNombre}</span>
+                        </div>
+                        <input type="date" class="student-form-date" data-forma-date="${formaId}" value="${fechaAprendida}" title="Fecha aprendida (opcional)">
+                    </label>
+                `;
+            }).join('')}
+        </div>
+        <p class="text-muted">La fecha es opcional al agregar una forma nueva; si la dejas vacia se usara la fecha actual.</p>
+    `;
+}
+
+function openStudentFormsSelector() {
+    finalViewState.studentForms.selectorOpen = true;
+    renderStudentFormsList();
+
+    const saveBtn = document.getElementById('student-save-forms-btn');
+    const cancelBtn = document.getElementById('student-cancel-forms-btn');
+    if (saveBtn) {
+        saveBtn.style.display = 'inline-block';
+    }
+    if (cancelBtn) {
+        cancelBtn.style.display = 'inline-block';
+    }
+}
+
+function cancelStudentFormsSelection() {
+    finalViewState.studentForms.selectorOpen = false;
+    renderStudentFormsList();
+    switchStudentProfilePanel('forms');
+}
+
+function getTodayDateInputValue() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+async function saveStudentForms() {
+    return runProtectedSaveAction('student-forms-save', 'student-save-forms-btn', async () => {
+        if (!isAdminSession()) {
+            showToast('Solo administradores pueden modificar formas', 'error');
+            return;
+        }
+
+        const student = finalViewState.selectedStudent;
+        const formsState = finalViewState.studentForms;
+
+        if (!student || !formsState.loaded) {
+            showToast('No hay datos de formas para guardar', 'error');
+            return;
+        }
+
+        if (!formsState.selectorOpen) {
+            showToast('Primero entra a Agregar/Quitar formas para guardar cambios', 'info');
+            return;
+        }
+
+        const checkboxes = Array.from(document.querySelectorAll('.student-form-checkbox'));
+        const selectedFormaIds = checkboxes
+            .filter(checkbox => checkbox.checked)
+            .map(checkbox => String(checkbox.dataset.formaId));
+
+        const existingByFormaId = {};
+        (formsState.links || []).forEach(link => {
+            existingByFormaId[String(link.id_forma)] = link;
+        });
+
+        const existingFormaIds = Object.keys(existingByFormaId);
+        const toAdd = selectedFormaIds.filter(id => !existingFormaIds.includes(id));
+        const toRemove = existingFormaIds.filter(id => !selectedFormaIds.includes(id));
+
+        if (toAdd.length === 0 && toRemove.length === 0) {
+            showToast('No hay cambios en las formas del alumno', 'info');
+            return;
+        }
+
+        try {
+            for (const formaId of toAdd) {
+                const dateInput = document.querySelector(`[data-forma-date="${formaId}"]`);
+                const fechaAprendida = dateInput?.value?.trim() || getTodayDateInputValue();
+
+                await apiCall('/api/database/tables/alumno_forma/rows', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        id_alumno: student.id_alumno,
+                        id_forma: Number(formaId),
+                        fecha_aprendida: fechaAprendida,
+                    }),
+                });
+            }
+
+            const pkFields = getPrimaryKeyFields(formsState.columns);
+            for (const formaId of toRemove) {
+                const linkRow = existingByFormaId[formaId];
+                const rowId = buildCompositeRowId(linkRow, pkFields);
+
+                if (!rowId) {
+                    throw new Error('No se pudo determinar la llave de una relacion alumno-forma');
+                }
+
+                await apiCall(`/api/database/tables/alumno_forma/rows/${encodeURIComponent(rowId)}`, {
+                    method: 'DELETE',
+                });
+            }
+
+            showToast('Formas del alumno actualizadas', 'success');
+            finalViewState.studentForms.loaded = false;
+            finalViewState.studentForms.selectorOpen = false;
+            await loadStudentFormsPanel();
+            switchStudentProfilePanel('forms');
+            await loadFinalTabData('alumnos');
+        } catch (error) {
+            console.error('Error actualizando formas de alumno:', error);
+            showToast(`Error al actualizar formas: ${error.message || 'Intenta nuevamente'}`, 'error');
+        }
+    });
+}
+
+function setupStudentProfileEventListeners() {
+    const modal = document.getElementById('student-profile-modal');
+    const closeBtn = document.getElementById('student-profile-close-btn');
+    const closeFooterBtn = document.getElementById('student-close-btn');
+    const editBtn = document.getElementById('student-edit-btn');
+    const manageFormsBtn = document.getElementById('student-manage-forms-btn');
+    const saveFormsBtn = document.getElementById('student-save-forms-btn');
+    const cancelFormsBtn = document.getElementById('student-cancel-forms-btn');
+    const menuInfoBtn = document.getElementById('student-menu-info');
+    const menuFormsBtn = document.getElementById('student-menu-forms');
+
+    if (!modal) return;
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closeStudentProfileModal);
+    }
+
+    if (closeFooterBtn) {
+        closeFooterBtn.addEventListener('click', closeStudentProfileModal);
+    }
+
+    modal.addEventListener('click', (e) => {
+        if (e.target.id === 'student-profile-modal') {
+            closeStudentProfileModal();
+        }
+    });
+
+    if (menuInfoBtn) {
+        menuInfoBtn.addEventListener('click', () => {
+            switchStudentProfilePanel('info');
+        });
+    }
+
+    if (menuFormsBtn) {
+        menuFormsBtn.addEventListener('click', async () => {
+            switchStudentProfilePanel('forms');
+            await loadStudentFormsPanel();
+        });
+    }
+
+    if (manageFormsBtn) {
+        manageFormsBtn.addEventListener('click', async () => {
+            switchStudentProfilePanel('forms');
+            await loadStudentFormsPanel();
+            openStudentFormsSelector();
+        });
+    }
+
+    if (editBtn) {
+        editBtn.addEventListener('click', async () => {
+            if (!isAdminSession()) {
+                showToast('Solo administradores pueden editar alumnos', 'error');
+                return;
+            }
+
+            const student = finalViewState.selectedStudent;
+            if (!student) {
+                showToast('No hay alumno seleccionado', 'error');
+                return;
+            }
+
+            closeStudentProfileModal();
+            await openFinalEditDialog('alumnos', student);
+        });
+    }
+
+    if (saveFormsBtn) {
+        saveFormsBtn.addEventListener('click', saveStudentForms);
+    }
+
+    if (cancelFormsBtn) {
+        cancelFormsBtn.addEventListener('click', cancelStudentFormsSelection);
+    }
 }
 
 // ==================== Final Add Dialog ====================
@@ -880,83 +2369,84 @@ function closeFinalAddDialog() {
 }
 
 async function saveFinalAddForm() {
-    const tableName = finalViewState.currentTable;
-    
-    if (!tableName) {
-        showToast('Error: no hay tabla seleccionada', 'error');
-        return;
-    }
-    
-    const form = document.getElementById('final-add-form');
-    const inputs = form.querySelectorAll('[data-column]');
-    
-    const rowData = {};
-    let isValid = true;
-    const missingFields = [];
-    
-    inputs.forEach(input => {
-        const colName = input.dataset.column;
-        
-        // Limpiar estilos previos
-        input.style.borderColor = '';
-        input.parentElement.style.backgroundColor = '';
-        
-        if (input.type === 'checkbox') {
-            rowData[colName] = input.checked;
-        } else {
-            const value = input.value.trim();
-            
-            if (input.hasAttribute('required') && !value) {
-                isValid = false;
-                missingFields.push(colName);
-                input.style.borderColor = 'var(--danger-color)';
-                input.style.borderWidth = '2px';
-                input.parentElement.style.backgroundColor = '#ffebee';
+    return runProtectedSaveAction('final-add-save', 'final-add-save-btn', async () => {
+        const tableName = finalViewState.currentTable;
+
+        if (!tableName) {
+            showToast('Error: no hay tabla seleccionada', 'error');
+            return;
+        }
+
+        const form = document.getElementById('final-add-form');
+        const inputs = form.querySelectorAll('[data-column]');
+
+        const rowData = {};
+        let isValid = true;
+        const missingFields = [];
+
+        inputs.forEach(input => {
+            const colName = input.dataset.column;
+
+            // Limpiar estilos previos
+            input.style.borderColor = '';
+            input.parentElement.style.backgroundColor = '';
+
+            if (input.type === 'checkbox') {
+                rowData[colName] = input.checked;
             } else {
-                input.style.borderColor = '';
-                rowData[colName] = value || null;
+                const value = input.value.trim();
+
+                if (input.hasAttribute('required') && !value) {
+                    isValid = false;
+                    missingFields.push(colName);
+                    input.style.borderColor = 'var(--danger-color)';
+                    input.style.borderWidth = '2px';
+                    input.parentElement.style.backgroundColor = '#ffebee';
+                } else {
+                    input.style.borderColor = '';
+                    rowData[colName] = value || null;
+                }
             }
+        });
+
+        if (!isValid) {
+            const errorMsg = `Campos obligatorios faltantes:\n\n• ${missingFields.join('\n• ')}`;
+            showToast(errorMsg, 'error');
+            return;
+        }
+
+        try {
+            let successMsg;
+
+            if (finalViewState.editingMode) {
+                // Modo edición - PUT
+                const rowId = finalViewState.editingRowId;
+                await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows/${rowId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(rowData)
+                });
+                successMsg = `✓ Elemento actualizado en ${tableName}`;
+            } else {
+                // Modo agregar - POST
+                await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows`, {
+                    method: 'POST',
+                    body: JSON.stringify(rowData)
+                });
+                successMsg = `✓ Elemento agregado a ${tableName}`;
+            }
+
+            showToast(successMsg, 'success');
+            closeFinalAddDialog();
+
+            // Recargar datos completos para asegurar sincronización
+            setTimeout(() => {
+                loadFinalTabData(tableName);
+            }, 500);
+        } catch (error) {
+            console.error('Error al guardar:', error);
+            showToast(`Error al guardar: ${error.message || 'Intenta nuevamente'}`, 'error');
         }
     });
-    
-    if (!isValid) {
-        const errorMsg = `Campos obligatorios faltantes:\n\n• ${missingFields.join('\n• ')}`;
-        showToast(errorMsg, 'error');
-        return;
-    }
-    
-    try {
-        let response;
-        let successMsg;
-        
-        if (finalViewState.editingMode) {
-            // Modo edición - PUT
-            const rowId = finalViewState.editingRowId;
-            response = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows/${rowId}`, {
-                method: 'PUT',
-                body: JSON.stringify(rowData)
-            });
-            successMsg = `✓ Elemento actualizado en ${tableName}`;
-        } else {
-            // Modo agregar - POST
-            response = await apiCall(`/api/database/tables/${encodeURIComponent(tableName)}/rows`, {
-                method: 'POST',
-                body: JSON.stringify(rowData)
-            });
-            successMsg = `✓ Elemento agregado a ${tableName}`;
-        }
-        
-        showToast(successMsg, 'success');
-        closeFinalAddDialog();
-        
-        // Recargar datos completos para asegurar sincronización
-        setTimeout(() => {
-            loadFinalTabData(tableName);
-        }, 500);
-    } catch (error) {
-        console.error('Error al guardar:', error);
-        showToast(`Error al guardar: ${error.message || 'Intenta nuevamente'}`, 'error');
-    }
 }
 
 // ==================== API Calls ==================== 
@@ -1997,43 +3487,45 @@ function loadSettings() {
 }
 
 function saveSettings() {
-    const apiUrl = normalizeApiUrl(document.getElementById('api-url').value.trim());
-    const autoRefresh = document.getElementById('auto-refresh').checked;
-    const refreshInterval = parseInt(document.getElementById('refresh-interval').value);
+    runProtectedSaveAction('settings-save', 'save-settings-btn', async () => {
+        const apiUrl = normalizeApiUrl(document.getElementById('api-url').value.trim());
+        const autoRefresh = document.getElementById('auto-refresh').checked;
+        const refreshInterval = parseInt(document.getElementById('refresh-interval').value);
 
-    if (!apiUrl) {
-        showToast('Por favor, ingrese una URL válida', 'error');
-        return;
-    }
-
-    try {
-        // Validar formato y esquema para evitar fallos silenciosos en fetch.
-        const parsedUrl = new URL(apiUrl);
-        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-            throw new Error('Protocolo inválido');
+        if (!apiUrl) {
+            showToast('Por favor, ingrese una URL válida', 'error');
+            return;
         }
-    } catch (error) {
-        showToast('La URL del API no es válida', 'error');
-        return;
-    }
 
-    if (refreshInterval < 5 || refreshInterval > 300) {
-        showToast('El intervalo debe estar entre 5 y 300 segundos', 'error');
-        return;
-    }
+        try {
+            // Validar formato y esquema para evitar fallos silenciosos en fetch.
+            const parsedUrl = new URL(apiUrl);
+            if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                throw new Error('Protocolo inválido');
+            }
+        } catch (error) {
+            showToast('La URL del API no es válida', 'error');
+            return;
+        }
 
-    appState.apiUrl = apiUrl;
-    appState.autoRefresh = autoRefresh;
-    appState.refreshIntervalSeconds = refreshInterval;
+        if (refreshInterval < 5 || refreshInterval > 300) {
+            showToast('El intervalo debe estar entre 5 y 300 segundos', 'error');
+            return;
+        }
 
-    localStorage.setItem('apiUrl', apiUrl);
-    localStorage.setItem('autoRefresh', autoRefresh);
-    localStorage.setItem('refreshInterval', refreshInterval);
+        appState.apiUrl = apiUrl;
+        appState.autoRefresh = autoRefresh;
+        appState.refreshIntervalSeconds = refreshInterval;
 
-    // Reinicializar actualización automática
-    initializeAutoRefresh();
+        localStorage.setItem('apiUrl', apiUrl);
+        localStorage.setItem('autoRefresh', autoRefresh);
+        localStorage.setItem('refreshInterval', refreshInterval);
 
-    showToast('Configuración guardada correctamente', 'success');
+        // Reinicializar actualización automática
+        initializeAutoRefresh();
+
+        showToast('Configuración guardada correctamente', 'success');
+    });
 }
 
 // ==================== Auto Refresh ==================== 

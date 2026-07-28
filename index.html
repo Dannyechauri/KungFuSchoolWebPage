@@ -354,7 +354,123 @@
             <form id="final-add-form" class="final-add-form"></form>
             <div class="final-add-modal-footer">
                 <button class="btn btn-secondary" onclick="closeFinalAddDialog()">Cancelar</button>
-                <button class="btn btn-primary" onclick="saveFinalAddForm()">Guardar</button>
+                <button class="btn btn-primary" id="final-add-save-btn" onclick="saveFinalAddForm()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de perfil de alumno -->
+    <div class="student-profile-modal" id="student-profile-modal" style="display: none;">
+        <div class="student-profile-modal-content">
+            <div class="student-profile-header">
+                <div>
+                    <h3 id="student-profile-title">Alumno</h3>
+                    <p id="student-profile-subtitle" class="student-profile-subtitle">Perfil y formas aprendidas</p>
+                </div>
+                <button class="student-profile-close" id="student-profile-close-btn" type="button">✕</button>
+            </div>
+
+            <div class="student-profile-menu" role="tablist" aria-label="Menu de alumno">
+                <button class="student-profile-menu-btn active" id="student-menu-info" type="button" data-panel="info">Caracteristicas</button>
+                <button class="student-profile-menu-btn" id="student-menu-forms" type="button" data-panel="forms">Formas que sabe</button>
+            </div>
+
+            <div class="student-profile-body">
+                <div class="student-profile-panel active" id="student-panel-info"></div>
+                <div class="student-profile-panel" id="student-panel-forms">
+                    <div class="loading" id="student-forms-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        Cargando formas...
+                    </div>
+                    <div id="student-forms-list"></div>
+                </div>
+            </div>
+
+            <div class="student-profile-footer">
+                <button class="btn btn-info" id="student-edit-btn" type="button">Editar datos</button>
+                <button class="btn btn-warning" id="student-manage-forms-btn" type="button">Agregar/Quitar formas</button>
+                <button class="btn btn-success" id="student-save-forms-btn" type="button" style="display: none;">Guardar formas</button>
+                <button class="btn btn-secondary" id="student-cancel-forms-btn" type="button" style="display: none;">Cancelar</button>
+                <button class="btn btn-secondary" id="student-close-btn" type="button">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de perfil de forma -->
+    <div class="form-profile-modal" id="form-profile-modal" style="display: none;">
+        <div class="form-profile-modal-content">
+            <div class="form-profile-header">
+                <div>
+                    <h3 id="form-profile-title">Forma</h3>
+                    <p id="form-profile-subtitle" class="form-profile-subtitle">Detalles y alumnos que la saben</p>
+                </div>
+                <button class="form-profile-close" id="form-profile-close-btn" type="button">✕</button>
+            </div>
+
+            <div class="form-profile-menu" role="tablist" aria-label="Menu de forma">
+                <button class="form-profile-menu-btn active" id="form-menu-info" type="button" data-panel="info">Caracteristicas</button>
+                <button class="form-profile-menu-btn" id="form-menu-students" type="button" data-panel="students">Alumnos que la saben</button>
+            </div>
+
+            <div class="form-profile-body">
+                <div class="form-profile-panel active" id="form-panel-info"></div>
+                <div class="form-profile-panel" id="form-panel-students">
+                    <div class="loading" id="form-students-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        Cargando alumnos...
+                    </div>
+                    <div id="form-students-list"></div>
+                </div>
+            </div>
+
+            <div class="form-profile-footer">
+                <button class="btn btn-info" id="form-edit-btn" type="button">Editar datos</button>
+                <button class="btn btn-secondary" id="form-close-btn" type="button">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de perfil de grado -->
+    <div class="grade-profile-modal" id="grade-profile-modal" style="display: none;">
+        <div class="grade-profile-modal-content">
+            <div class="grade-profile-header">
+                <div>
+                    <h3 id="grade-profile-title">Grado</h3>
+                    <p id="grade-profile-subtitle" class="grade-profile-subtitle">Detalles y alumnos del grado</p>
+                </div>
+                <button class="grade-profile-close" id="grade-profile-close-btn" type="button">✕</button>
+            </div>
+
+            <div class="grade-profile-menu" role="tablist" aria-label="Menu de grado">
+                <button class="grade-profile-menu-btn active" id="grade-menu-info" type="button" data-panel="info">Caracteristicas</button>
+                <button class="grade-profile-menu-btn" id="grade-menu-students" type="button" data-panel="students">Alumnos en este grado</button>
+                <button class="grade-profile-menu-btn" id="grade-menu-forms" type="button" data-panel="forms">Formas requeridas</button>
+            </div>
+
+            <div class="grade-profile-body">
+                <div class="grade-profile-panel active" id="grade-panel-info"></div>
+                <div class="grade-profile-panel" id="grade-panel-students">
+                    <div class="loading" id="grade-students-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        Cargando alumnos...
+                    </div>
+                    <div id="grade-students-list"></div>
+                </div>
+                <div class="grade-profile-panel" id="grade-panel-forms">
+                    <div class="loading" id="grade-forms-loading" style="display: none;">
+                        <span class="spinner"></span>
+                        Cargando formas...
+                    </div>
+                    <div id="grade-forms-list"></div>
+                </div>
+            </div>
+
+            <div class="grade-profile-footer">
+                <button class="btn btn-info" id="grade-edit-btn" type="button">Editar datos</button>
+                <button class="btn btn-warning" id="grade-manage-forms-btn" type="button">Agregar/Quitar formas</button>
+                <button class="btn btn-success" id="grade-save-forms-btn" type="button" style="display: none;">Guardar formas</button>
+                <button class="btn btn-secondary" id="grade-cancel-forms-btn" type="button" style="display: none;">Cancelar</button>
+                <button class="btn btn-secondary" id="grade-close-btn" type="button">Cerrar</button>
             </div>
         </div>
     </div>

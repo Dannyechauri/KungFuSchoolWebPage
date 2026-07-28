@@ -888,6 +888,15 @@ body {
     text-align: left;
 }
 
+.final-data-table th.final-sortable-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.final-data-table th.final-sortable-header:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
 .final-data-table td {
     padding: 14px 16px;
     border-bottom: 1px solid var(--gray-200);
@@ -896,6 +905,14 @@ body {
 
 .final-data-table tbody tr:hover {
     background-color: var(--gray-50);
+}
+
+.final-data-table tbody tr.final-row-clickable {
+    cursor: pointer;
+}
+
+.final-data-table tbody tr.final-row-clickable:hover {
+    background-color: #fff8e1;
 }
 
 .final-data-table tbody tr:last-child td {
@@ -1046,6 +1063,692 @@ body {
     padding: 24px;
     overflow-y: auto;
     flex: 1;
+}
+
+/* ==================== Student Profile Modal ==================== */
+.student-profile-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(33, 33, 33, 0.58);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 320;
+    padding: 20px;
+}
+
+.student-profile-modal-content {
+    width: min(920px, 100%);
+    max-height: 92vh;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.student-profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--gray-200);
+    background: linear-gradient(135deg, #fff3e0 0%, #ffffff 70%);
+}
+
+.student-profile-header h3 {
+    margin: 0;
+    font-size: 1.35rem;
+    color: var(--gray-900);
+}
+
+.student-profile-subtitle {
+    margin: 6px 0 0;
+    color: var(--gray-700);
+    font-size: 0.95rem;
+}
+
+.student-profile-close {
+    border: none;
+    background: transparent;
+    color: var(--gray-700);
+    cursor: pointer;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-size: 1.25rem;
+}
+
+.student-profile-close:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.student-profile-menu {
+    display: flex;
+    gap: 10px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.student-profile-menu-btn {
+    border: 1px solid var(--gray-300);
+    background: white;
+    color: var(--gray-700);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.student-profile-menu-btn.active {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: #ffebee;
+}
+
+.student-profile-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.student-profile-panel {
+    display: none;
+}
+
+.student-profile-panel.active {
+    display: block;
+}
+
+.student-profile-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.student-profile-info-item {
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 12px;
+    background: #fafafa;
+}
+
+.student-profile-info-label {
+    display: block;
+    color: var(--gray-700);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+    margin-bottom: 6px;
+}
+
+.student-profile-info-value {
+    color: var(--gray-900);
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.student-forms-summary {
+    margin-bottom: 14px;
+    color: var(--gray-700);
+}
+
+.list-sort-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.list-sort-btn {
+    border: 1px solid var(--gray-300);
+    background: #ffffff;
+    color: var(--gray-700);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.list-sort-btn:hover {
+    background: var(--gray-100);
+    border-color: var(--gray-400);
+}
+
+.student-known-forms {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.student-known-form-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: #fafafa;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.student-known-form-name {
+    font-weight: 600;
+    color: var(--gray-900);
+}
+
+.student-known-form-date {
+    font-size: 0.85rem;
+    color: var(--gray-700);
+}
+
+.student-forms-selector-title {
+    font-size: 0.92rem;
+    color: var(--gray-700);
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.student-forms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 10px;
+}
+
+.student-form-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: white;
+}
+
+.student-form-item.student-form-item-checkbox-only {
+    justify-content: flex-start;
+}
+
+.student-form-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.student-form-name {
+    font-weight: 600;
+    color: var(--gray-900);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.student-form-date {
+    width: 142px;
+    max-width: 50%;
+}
+
+.student-profile-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+
+/* ==================== Form Profile Modal ==================== */
+.form-profile-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(33, 33, 33, 0.58);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 325;
+    padding: 20px;
+}
+
+.form-profile-modal-content {
+    width: min(920px, 100%);
+    max-height: 92vh;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.form-profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--gray-200);
+    background: linear-gradient(135deg, #f1f8e9 0%, #ffffff 70%);
+}
+
+.form-profile-header h3 {
+    margin: 0;
+    font-size: 1.35rem;
+    color: var(--gray-900);
+}
+
+.form-profile-subtitle {
+    margin: 6px 0 0;
+    color: var(--gray-700);
+    font-size: 0.95rem;
+}
+
+.form-profile-close {
+    border: none;
+    background: transparent;
+    color: var(--gray-700);
+    cursor: pointer;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-size: 1.25rem;
+}
+
+.form-profile-close:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.form-profile-menu {
+    display: flex;
+    gap: 10px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.form-profile-menu-btn {
+    border: 1px solid var(--gray-300);
+    background: white;
+    color: var(--gray-700);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.form-profile-menu-btn.active {
+    border-color: #2e7d32;
+    color: #2e7d32;
+    background: #e8f5e9;
+}
+
+.form-profile-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.form-profile-panel {
+    display: none;
+}
+
+.form-profile-panel.active {
+    display: block;
+}
+
+.form-profile-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.form-profile-info-item {
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 12px;
+    background: #fafafa;
+}
+
+.form-profile-info-label {
+    display: block;
+    color: var(--gray-700);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+    margin-bottom: 6px;
+}
+
+.form-profile-info-value {
+    color: var(--gray-900);
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.form-students-summary {
+    margin-bottom: 14px;
+    color: var(--gray-700);
+}
+
+.form-known-students {
+    display: grid;
+    gap: 8px;
+}
+
+.form-known-student-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: #fafafa;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.form-known-student-name {
+    font-weight: 600;
+    color: var(--gray-900);
+}
+
+.form-known-student-date {
+    font-size: 0.85rem;
+    color: var(--gray-700);
+}
+
+.form-profile-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+
+/* ==================== Grade Profile Modal ==================== */
+.grade-profile-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(33, 33, 33, 0.58);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 326;
+    padding: 20px;
+}
+
+.grade-profile-modal-content {
+    width: min(920px, 100%);
+    max-height: 92vh;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.grade-profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--gray-200);
+    background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 70%);
+}
+
+.grade-profile-header h3 {
+    margin: 0;
+    font-size: 1.35rem;
+    color: var(--gray-900);
+}
+
+.grade-profile-subtitle {
+    margin: 6px 0 0;
+    color: var(--gray-700);
+    font-size: 0.95rem;
+}
+
+.grade-profile-close {
+    border: none;
+    background: transparent;
+    color: var(--gray-700);
+    cursor: pointer;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-size: 1.25rem;
+}
+
+.grade-profile-close:hover {
+    background: var(--gray-100);
+    color: var(--gray-900);
+}
+
+.grade-profile-menu {
+    display: flex;
+    gap: 10px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.grade-profile-menu-btn {
+    border: 1px solid var(--gray-300);
+    background: white;
+    color: var(--gray-700);
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.grade-profile-menu-btn.active {
+    border-color: #1565c0;
+    color: #1565c0;
+    background: #e3f2fd;
+}
+
+.grade-profile-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.grade-profile-panel {
+    display: none;
+}
+
+.grade-profile-panel.active {
+    display: block;
+}
+
+.grade-profile-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.grade-profile-info-item {
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 12px;
+    background: #fafafa;
+}
+
+.grade-profile-info-label {
+    display: block;
+    color: var(--gray-700);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.45px;
+    margin-bottom: 6px;
+}
+
+.grade-profile-info-value {
+    color: var(--gray-900);
+    font-weight: 600;
+    word-break: break-word;
+}
+
+.grade-students-summary {
+    margin-bottom: 14px;
+    color: var(--gray-700);
+}
+
+.grade-known-students {
+    display: grid;
+    gap: 8px;
+}
+
+.grade-known-student-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: #fafafa;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.grade-known-student-name {
+    font-weight: 600;
+    color: var(--gray-900);
+}
+
+.grade-known-student-extra {
+    font-size: 0.85rem;
+    color: var(--gray-700);
+}
+
+.grade-known-forms {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.grade-known-form-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: #fafafa;
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.grade-known-form-name {
+    font-weight: 600;
+    color: var(--gray-900);
+}
+
+.grade-known-form-extra {
+    font-size: 0.85rem;
+    color: var(--gray-700);
+}
+
+.grade-profile-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--gray-200);
+    background: var(--gray-50);
+}
+
+@media (max-width: 768px) {
+    .student-profile-modal {
+        padding: 10px;
+    }
+
+    .student-profile-modal-content {
+        max-height: 96vh;
+    }
+
+    .student-profile-header,
+    .student-profile-body {
+        padding: 16px;
+    }
+
+    .student-profile-menu {
+        padding: 10px 12px;
+        overflow-x: auto;
+    }
+
+    .form-profile-modal {
+        padding: 10px;
+    }
+
+    .form-profile-modal-content {
+        max-height: 96vh;
+    }
+
+    .form-profile-header,
+    .form-profile-body {
+        padding: 16px;
+    }
+
+    .form-profile-menu {
+        padding: 10px 12px;
+        overflow-x: auto;
+    }
+
+    .grade-profile-modal {
+        padding: 10px;
+    }
+
+    .grade-profile-modal-content {
+        max-height: 96vh;
+    }
+
+    .grade-profile-header,
+    .grade-profile-body {
+        padding: 16px;
+    }
+
+    .grade-profile-menu {
+        padding: 10px 12px;
+        overflow-x: auto;
+    }
+
+    .student-form-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .student-known-form-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .student-form-date {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .form-known-student-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .grade-known-student-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .grade-known-form-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
 
 .final-tab-placeholder {
