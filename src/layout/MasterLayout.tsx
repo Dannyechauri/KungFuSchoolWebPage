@@ -1,18 +1,16 @@
-import type { ReactNode } from 'react';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthProvider';
-import { AppLink, useNavigation, type AppView } from '../navigation/navigation';
 
 const navigation = [
-  { to: '/', view: 'dashboard', label: 'Inicio', icon: '院' },
-  { to: '/alumnos', view: 'students', label: 'Alumnos', icon: '人' },
-  { to: '/calendario', view: 'calendar', label: 'Calendario', icon: '日' },
-  { to: '/conocimiento', view: 'knowledge', label: 'Conocimiento', icon: '拳' },
-  { to: '/equipo', view: 'team', label: 'Equipo', icon: '师' },
+  { to: '/', label: 'Inicio', icon: '院' },
+  { to: '/alumnos', label: 'Alumnos', icon: '人' },
+  { to: '/calendario', label: 'Calendario', icon: '日' },
+  { to: '/conocimiento', label: 'Conocimiento', icon: '拳' },
+  { to: '/equipo', label: 'Equipo', icon: '师' },
 ];
 
-export function MasterLayout({ children }: { children: ReactNode }) {
+export function MasterLayout() {
   const { user, isAdmin, logout } = useAuth();
-  const { route } = useNavigation();
 
   return (
     <div className="app-shell">
@@ -27,14 +25,14 @@ export function MasterLayout({ children }: { children: ReactNode }) {
 
         <nav className="main-nav" aria-label="Navegación principal">
           {navigation.map((item) => (
-            <AppLink
-              key={item.to}
-              to={item.to}
-              className={route.view === (item.view as AppView) ? 'active' : undefined}
-            >
+            /*
+              NavLink es como Link, pero sabe si su ruta está activa.
+              Así evitamos estado manual para marcar el menú seleccionado.
+            */
+            <NavLink key={item.to} to={item.to} end={item.to === '/'}>
               <span className="nav-icon">{item.icon}</span>
               {item.label}
-            </AppLink>
+            </NavLink>
           ))}
         </nav>
 
@@ -60,7 +58,7 @@ export function MasterLayout({ children }: { children: ReactNode }) {
         </header>
 
         <main className="content-panel">
-          {children}
+          <Outlet />
         </main>
       </div>
     </div>

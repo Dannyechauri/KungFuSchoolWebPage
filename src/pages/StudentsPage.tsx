@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { databaseApi } from '../api/schoolApi';
 import { EmptyState } from '../components/EmptyState';
@@ -7,7 +8,6 @@ import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../features/auth/AuthProvider';
 import { useSchoolData } from '../hooks/useSchoolData';
-import { AppLink } from '../navigation/navigation';
 import type { StudentRow } from '../types/school';
 import { todayInputValue } from '../utils/date';
 
@@ -125,7 +125,7 @@ export function StudentsPage() {
       ) : (
         <div className="student-grid">
           {filteredStudents.map((student) => (
-            <AppLink key={student.id_alumno} className="student-card" to={`/alumnos/${student.id_alumno}`}>
+            <Link key={student.id_alumno} className="student-card" to={`/alumnos/${student.id_alumno}`}>
               <div className="student-avatar">{student.nombre.slice(0, 1).toUpperCase()}</div>
               <div>
                 <strong>{student.nombre}</strong>
@@ -134,7 +134,7 @@ export function StudentsPage() {
                   {student.numero_matricula} · {student.knownForms.length} forma(s)
                 </small>
               </div>
-            </AppLink>
+            </Link>
           ))}
         </div>
       )}

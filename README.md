@@ -98,7 +98,6 @@ src/
 ├── features/auth/       # Login, sesión y permisos básicos
 ├── hooks/               # Hooks de datos; useSchoolData concentra la carga principal
 ├── layout/              # Layout general del panel
-├── navigation/          # Mini-router didáctico sin dependencia externa
 ├── pages/               # Pantallas principales
 ├── types/               # Tipos TypeScript del dominio de escuela
 └── utils/               # Utilidades pequeñas
@@ -112,6 +111,11 @@ El código tiene algunos comentarios intencionados para explicar conceptos bási
 - `useEffect`: sincronización con sesión/navegador.
 - `useMemo`: datos derivados sin recalcular de más.
 - `useMutation`: escritura contra backend e invalidación de caché.
+- React Router: navegación con `BrowserRouter`, `Routes`, `Route`, `NavLink`, `Link` y `useParams`.
 - componentes con props: piezas pequeñas que reciben datos y devuelven UI.
 
 No pretende ser un curso completo de React, pero sí una base legible para revisarla con alguien que viene de programación técnica no web.
+
+## Tests
+
+Hay un plan inicial en `TESTING_PLAN.md`. La idea no es testearlo todo todavía, sino empezar por una red pequeña: build/typecheck, funciones puras, componentes clave y más adelante un smoke test con Playwright.

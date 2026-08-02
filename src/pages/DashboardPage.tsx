@@ -1,9 +1,9 @@
+import { Link } from 'react-router-dom';
 import { EmptyState } from '../components/EmptyState';
 import { LoadingState } from '../components/LoadingState';
 import { PageHeader } from '../components/PageHeader';
 import { StatCard } from '../components/StatCard';
 import { useSchoolData } from '../hooks/useSchoolData';
-import { AppLink } from '../navigation/navigation';
 import { formatDateTime } from '../utils/date';
 
 export function DashboardPage() {
@@ -59,7 +59,7 @@ export function DashboardPage() {
         <article className="panel-card">
           <div className="panel-card-header">
             <h2>Próximas actividades</h2>
-            <AppLink to="/calendario">Ver calendario</AppLink>
+            <Link to="/calendario">Ver calendario</Link>
           </div>
 
           {upcomingEvents.length === 0 ? (
@@ -85,7 +85,7 @@ export function DashboardPage() {
         <article className="panel-card">
           <div className="panel-card-header">
             <h2>Atención del maestro</h2>
-            <AppLink to="/alumnos">Ver alumnos</AppLink>
+            <Link to="/alumnos">Ver alumnos</Link>
           </div>
 
           {studentsWithoutGrade.length > 0 ? (
@@ -103,7 +103,7 @@ export function DashboardPage() {
           ) : (
             <div className="simple-list">
               {incompleteProgress.map(({ student, missing }) => (
-                <AppLink key={student.id_alumno} to={`/alumnos/${student.id_alumno}`} className="list-row list-row-link">
+                <Link key={student.id_alumno} to={`/alumnos/${student.id_alumno}`} className="list-row list-row-link">
                   <div>
                     <strong>{student.nombre}</strong>
                     <span>{student.grade?.nombre ?? 'Sin grado'}</span>
@@ -111,7 +111,7 @@ export function DashboardPage() {
                   <div className="list-meta">
                     <span>{missing} forma(s) pendiente(s)</span>
                   </div>
-                </AppLink>
+                </Link>
               ))}
             </div>
           )}

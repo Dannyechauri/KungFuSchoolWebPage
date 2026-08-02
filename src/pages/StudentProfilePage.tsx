@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { databaseApi } from '../api/schoolApi';
 import { EmptyState } from '../components/EmptyState';
@@ -6,18 +7,17 @@ import { LoadingState } from '../components/LoadingState';
 import { PageHeader } from '../components/PageHeader';
 import { useAuth } from '../features/auth/AuthProvider';
 import { useSchoolData } from '../hooks/useSchoolData';
-import { AppLink, useNavigation } from '../navigation/navigation';
 import type { StudentFormRow, StudentRow } from '../types/school';
 import { formatDate, todayInputValue, toDateInputValue } from '../utils/date';
 
 export function StudentProfilePage() {
-  const { route } = useNavigation();
+  const { studentId } = useParams();
   const queryClient = useQueryClient();
   const { isAdmin } = useAuth();
   const { isLoading, students, grades, forms, gradeForms, studentForms } = useSchoolData();
   const [selectedFormId, setSelectedFormId] = useState('');
 
-  const student = students.find((item) => String(item.id_alumno) === String(route.studentId));
+  const student = students.find((item) => String(item.id_alumno) === String(studentId));
 
   const requiredForms = useMemo(() => {
     if (!student?.grade) return [];
@@ -93,7 +93,7 @@ export function StudentProfilePage() {
         eyebrow="Ficha de alumno"
         title={student.nombre}
         description={`${student.grade?.nombre ?? 'Sin grado'} · matrícula ${student.numero_matricula}`}
-        actions={<AppLink className="secondary-action" to="/alumnos">← Volver</AppLink>}
+        actions={<Link className="secondary-action" to="/alumnos">← Volver</Link>}
       />
 
       <div className="profile-grid">
