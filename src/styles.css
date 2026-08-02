@@ -221,8 +221,11 @@ label {
   position: sticky;
   top: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   height: 100vh;
+  min-width: 0;
+  overflow: hidden;
   padding: 24px;
   background:
     linear-gradient(180deg, rgba(48, 24, 20, 0.96), rgba(33, 21, 18, 0.98)),
@@ -279,6 +282,8 @@ label {
 }
 
 .sidebar-note {
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
   padding: 16px;
@@ -286,6 +291,63 @@ label {
   font-size: 0.95rem;
   line-height: 1.5;
   background: rgba(255, 255, 255, 0.06);
+}
+
+.zodiac-ribbon {
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 8px 0;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.zodiac-ribbon::before,
+.zodiac-ribbon::after {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  width: 34px;
+  content: "";
+  pointer-events: none;
+}
+
+.zodiac-ribbon::before {
+  left: 0;
+  background: linear-gradient(90deg, rgba(34, 21, 18, 0.98), transparent);
+}
+
+.zodiac-ribbon::after {
+  right: 0;
+  background: linear-gradient(270deg, rgba(34, 21, 18, 0.98), transparent);
+}
+
+.zodiac-track {
+  display: flex;
+  width: max-content;
+  animation: zodiac-scroll 34s linear infinite;
+}
+
+.zodiac-item {
+  display: grid;
+  flex: 0 0 44px;
+  place-items: center;
+  gap: 2px;
+  color: #f7dfac;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.zodiac-item img {
+  width: 27px;
+  height: 27px;
+  object-fit: contain;
+  filter: sepia(0.25) saturate(0.9);
+  opacity: 0.9;
 }
 
 .sidebar-note a {
@@ -571,21 +633,42 @@ label {
 }
 
 .removable-tag {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
   color: var(--ink);
   background: #fff;
   border: 1px solid var(--line);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.tag-list .removable-tag {
+  display: inline-flex;
+}
+
+.removable-tag-text {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
 }
 
 .removable-tag button {
   display: grid;
+  flex: 0 0 24px;
   width: 24px;
   height: 24px;
   place-items: center;
   border: 0;
   border-radius: 999px;
+  padding: 0;
   color: var(--red);
   background: #f8e7e6;
   cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1;
 }
 
 .removable-tag small {
@@ -827,6 +910,12 @@ label {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes zodiac-scroll {
+  to {
+    transform: translateX(-50%);
   }
 }
 

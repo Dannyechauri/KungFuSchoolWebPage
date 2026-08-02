@@ -100,7 +100,7 @@ export function TeamPage() {
                   ) : (
                     instructor.styles.map((style) => (
                       <span key={style.id_estilo} className="removable-tag">
-                        {style.nombre}
+                        <span className="removable-tag-text">{style.nombre}</span>
                         {isAdmin ? (
                           <button
                             type="button"

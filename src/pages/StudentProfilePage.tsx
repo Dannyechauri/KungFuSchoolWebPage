@@ -201,7 +201,10 @@ export function StudentProfilePage() {
 
                 return (
                   <span key={form.id_forma} className="removable-tag">
-                    {form.nombre}
+                    <span className="removable-tag-text">
+                      {form.nombre}
+                      {link?.fecha_aprendida ? <small>{formatDate(link.fecha_aprendida)}</small> : null}
+                    </span>
                     {isAdmin ? (
                       <button
                         type="button"
@@ -211,7 +214,6 @@ export function StudentProfilePage() {
                         ✕
                       </button>
                     ) : null}
-                    {link?.fecha_aprendida ? <small>{formatDate(link.fecha_aprendida)}</small> : null}
                   </span>
                 );
               })}

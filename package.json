@@ -7,6 +7,8 @@
     "dev": "vite --host 127.0.0.1 --port 8000",
     "dev:host": "vite --host 0.0.0.0 --port 8000",
     "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview --host 127.0.0.1 --port 8000",
     "legacy": "vite --host 127.0.0.1 --port 8000 --open /legacy-admin/"
   },
@@ -30,7 +32,8 @@
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
     "typescript": "^7.0.2",
-    "vite": "^8.2.0"
+    "vite": "^8.2.0",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=20.19.0"

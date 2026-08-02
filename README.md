@@ -60,6 +60,7 @@ password
 npm run dev       # Arranca Vite en http://127.0.0.1:8000
 npm run dev:host  # Expone el front en la red local
 npm run build     # Compila TypeScript y genera dist/
+npm test          # Ejecuta los tests unitarios mínimos con Vitest
 npm run preview   # Sirve el build de producción
 npm run legacy    # Abre la herramienta técnica antigua
 ```

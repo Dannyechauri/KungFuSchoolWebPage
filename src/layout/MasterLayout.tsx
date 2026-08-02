@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { ZodiacRibbon } from '../components/ZodiacRibbon';
 import { useAuth } from '../features/auth/AuthProvider';
 
 const navigation = [
@@ -37,10 +38,14 @@ export function MasterLayout() {
         </nav>
 
         <div className="sidebar-note">
-          <p>Panel pensado para el trabajo diario del maestro: pocas secciones, acciones claras.</p>
+          <ZodiacRibbon />
+          <p>
+            Panel pensado para el trabajo diario de maestros, instructores y administradores: pocas secciones,
+            acciones claras.
+          </p>
           {isAdmin ? (
             <a href="/legacy-admin/" target="_blank" rel="noreferrer">
-              Herramienta técnica antigua
+              Herramienta técnica original
             </a>
           ) : null}
         </div>

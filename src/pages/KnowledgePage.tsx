@@ -172,7 +172,7 @@ export function KnowledgePage() {
                     ) : (
                       grade.requiredForms.map((form) => (
                         <span key={form.id_forma} className="removable-tag">
-                          {form.nombre}
+                          <span className="removable-tag-text">{form.nombre}</span>
                           {isAdmin ? (
                             <button
                               type="button"

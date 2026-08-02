@@ -22,6 +22,11 @@ Herramienta recomendada:
 
 - Vitest.
 
+Estado actual:
+
+- Vitest ya está instalado.
+- `npm test` ejecuta tests mínimos sobre utilidades de fecha y filas.
+
 Qué probar primero:
 
 - utilidades de fecha en `src/utils/date.ts`;
