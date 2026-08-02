@@ -1,227 +1,117 @@
-# 🥋 Panel de Administración - Escuela de Kung Fu
+# Panel del maestro · Instituto de Wu-shu de Barcelona
 
-## Descripción
+Esta rama convierte el front original en una aplicación React orientada al uso diario del maestro y administradores de la escuela.
 
-Panel web moderno y responsivo para administrar la base de datos de la Escuela de Kung Fu. Proporciona una interfaz intuitiva para monitorear el estado de la base de datos, visualizar tablas y ejecutar migraciones.
+La herramienta técnica antigua no se ha borrado: queda preservada en `legacy-admin/`. La pantalla principal ahora es una experiencia más clara para trabajar con alumnos, calendario, conocimiento y equipo docente.
 
-## Características
+## Objetivo de esta rama
 
-✅ **Dashboard Interactivo**
-- Estado en tiempo real de la base de datos
-- Estadísticas de tablas y migraciones
-- Acciones rápidas
-
-✅ **Gestión de Tablas**
-- Visualizar todas las tablas de la base de datos
-- Información detallada de cada tabla
-- Interfaz responsiva
-
-✅ **Gestión de Migraciones**
-- Ejecutar migraciones con un clic
-- Ver detalles de migraciones ejecutadas
-- Información de versiones
-
-✅ **Configuración**
-- Cambiar URL del API backend
-- Configurar actualización automática
-- Ajustar intervalo de actualización
-
-✅ **Diseño Responsivo**
-- Compatible con escritorio, tablet y móvil
-- Interfaz moderna con gradientes y animaciones
-- Notificaciones toast amigables
+- Usar React como base del futuro front de producto.
+- Mantener una UI moderna, pero sencilla de usar para un maestro no técnico.
+- Evitar enseñar tablas crudas como experiencia principal.
+- Reutilizar la estructura ya existente del backend.
+- Dejar comentarios didácticos mínimos en el código para que sirva también como material de aprendizaje de React.
 
 ## Requisitos
 
-- Navegador web moderno (Chrome, Firefox, Safari, Edge)
-- Acceso al servidor backend de Kung Fu en `http://localhost:8080`
-- JavaScript habilitado
+- Node.js `>=20.19.0`
+- Backend arrancado, por defecto en `http://127.0.0.1:8080`
+- Sesión válida en el backend
 
-## Instalación
+## Arranque local
 
-### Opción 1: Acceso Directo (Recomendado)
+Desde esta carpeta:
 
-1. Abre el archivo `index.html` en tu navegador web:
-   ```
-   Abre KungFuSchoolWebPage/index.html
-   ```
-
-### Opción 2: Usando un Servidor Local
-
-Para evitar problemas de CORS, es recomendable servir los archivos localmente:
-
-#### Con Python (3.x):
 ```bash
-cd KungFuSchoolWebPage
-python -m http.server 8000
+npm install
+npm run dev
 ```
 
-Luego accede a: `http://localhost:8000`
+Abre:
 
-#### Con Node.js:
+```text
+http://127.0.0.1:8000/
+```
+
+Si tu backend usa otra URL:
+
 ```bash
-cd KungFuSchoolWebPage
-npx http-server
+VITE_API_URL=http://127.0.0.1:8080 npm run dev
 ```
 
-#### Con Live Server (VS Code):
-1. Instala la extensión "Live Server"
-2. Click derecho en `index.html`
-3. Selecciona "Open with Live Server"
+También puedes crear un `.env.local`:
 
-## Uso
-
-### 1. Dashboard
-- **Verificar Estado**: Comprueba la conexión y estado de la base de datos
-- **Ver Tablas**: Número total de tablas en la base de datos
-- **Acciones Rápidas**: Botones para navegar a otras secciones
-
-### 2. Tablas
-- Visualiza todas las tablas de la base de datos
-- Cada tabla muestra opciones de información detallada
-- Recarga la lista con el botón "Recargar"
-
-### 3. Migraciones
-- Ejecuta las migraciones de base de datos
-- Revisa los detalles de ejecución
-- Información sobre versiones de esquema
-
-### 4. Configuración
-- **URL del API**: Configura la dirección del servidor backend
-- **Actualización Automática**: Habilita/deshabilita el refresco automático
-- **Intervalo**: Define cada cuántos segundos se actualiza
-
-## Configuración del Backend
-
-La aplicación se conecta al backend en `http://localhost:8080` por defecto. 
-
-### Endpoints Utilizados
-
-```
-GET  /api/database/health     - Estado de la base de datos
-GET  /api/database/tables     - Listar tablas
-POST /api/database/migrate    - Ejecutar migraciones
+```bash
+VITE_API_URL=http://127.0.0.1:8080
 ```
 
-Si tu backend está en otra ubicación, cambia la URL en la sección **Configuración**.
+## Credenciales de prueba
 
-## Configuración de CORS
+Si el backend se ha arrancado con la base demo que usamos durante la POC:
 
-Si experimentas errores de CORS, asegúrate de que tu backend Spring Boot tenga CORS habilitado:
-
-```kotlin
-@Configuration
-class CorsConfig {
-    @Bean
-    fun corsConfigurationSource(): CorsConfigurationSource {
-        val configuration = CorsConfiguration()
-        configuration.allowedOrigins = listOf("http://localhost:8000", "http://localhost:3000")
-        configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
-        configuration.allowedHeaders = listOf("*")
-        configuration.allowCredentials = true
-        
-        val source = UrlBasedCorsConfigurationSource()
-        source.registerCorsConfiguration("/api/**", configuration)
-        return source
-    }
-}
+```text
+admin.demo@iwushu.local
+password
 ```
 
-## Almacenamiento Local
+## Scripts
 
-La aplicación utiliza `localStorage` del navegador para guardar:
-- URL del API
-- Preferencias de actualización automática
-- Intervalo de actualización
-
-Estos datos persisten entre sesiones.
-
-## Características Avanzadas
-
-### Notificaciones Toast
-- **Información**: Mensajes de estado general
-- **Éxito**: Operaciones completadas correctamente
-- **Error**: Problemas detectados
-- Se cierran automáticamente después de 4 segundos
-
-### Auto-Actualización
-- Actualiza automáticamente cuando estás en el Dashboard
-- Intervalo configurable (5-300 segundos)
-- Pausa cuando cambias de sección
-
-### Manejo de Errores
-- Mensajes de error claros y descriptivos
-- Validación de entradas
-- Confirmación para operaciones críticas
-
-## Estructura de Archivos
-
-```
-KungFuSchoolWebPage/
-├── index.html          # Página principal HTML
-├── styles.css          # Estilos CSS
-├── app.js              # Lógica JavaScript
-├── README.md           # Esta documentación
-└── package.json        # Configuración de proyecto (opcional)
+```bash
+npm run dev       # Arranca Vite en http://127.0.0.1:8000
+npm run dev:host  # Expone el front en la red local
+npm run build     # Compila TypeScript y genera dist/
+npm run preview   # Sirve el build de producción
+npm run legacy    # Abre la herramienta técnica antigua
 ```
 
-## Desarrollo
+## Secciones React actuales
 
-### Personalización de Estilos
+- Inicio: resumen tranquilo de alumnos, próximas actividades y avisos.
+- Alumnos: buscador, filtros por grado/forma, alta rápida y ficha de alumno.
+- Ficha de alumno: edición básica, cambio de grado y formas que conoce.
+- Calendario: vista mensual/agenda, creación y cancelación de actividades.
+- Conocimiento: estilos, formas, grados, formas requeridas y tipos de curso.
+- Equipo: instructores, estilos que enseñan y próximas actividades.
 
-Edita `styles.css` para personalizar los colores y estilos:
+## Herramienta técnica antigua
 
-```css
-:root {
-    --primary-color: #d32f2f;      /* Rojo primario */
-    --secondary-color: #1976d2;    /* Azul secundario */
-    --success-color: #388e3c;      /* Verde de éxito */
-}
+El front vanilla anterior está en:
+
+```text
+legacy-admin/
 ```
 
-### Agregar Nuevos Endpoints
+Durante desarrollo con Vite se puede abrir en:
 
-En `app.js`, agrega nuevas funciones:
-
-```javascript
-async function newFeature() {
-    try {
-        const data = await apiCall('/api/database/new-endpoint');
-        // Procesa los datos
-    } catch (error) {
-        showToast('Error', 'error');
-    }
-}
+```text
+http://127.0.0.1:8000/legacy-admin/
 ```
 
-## Resolución de Problemas
+Esa parte sigue siendo útil como herramienta cruda para desarrollo o inspección, pero no es la experiencia que queremos poner delante del maestro.
 
-### El panel no se conecta al backend
-1. Verifica que el servidor backend está corriendo en `http://localhost:8080`
-2. En Configuración, cambia la URL del API si es necesario
-3. Revisa la consola del navegador (F12 → Consola) para errores
+## Estructura relevante
 
-### Error de CORS
-- Asegúrate de que el backend permite CORS
-- Intenta acceder desde un servidor local (http://localhost:xxxx)
-- Consulta la sección de Configuración de CORS arriba
+```text
+src/
+├── api/                 # Cliente HTTP y acceso al backend genérico
+├── components/          # Piezas UI pequeñas reutilizables
+├── features/auth/       # Login, sesión y permisos básicos
+├── hooks/               # Hooks de datos; useSchoolData concentra la carga principal
+├── layout/              # Layout general del panel
+├── navigation/          # Mini-router didáctico sin dependencia externa
+├── pages/               # Pantallas principales
+├── types/               # Tipos TypeScript del dominio de escuela
+└── utils/               # Utilidades pequeñas
+```
 
-### Las tablas no cargan
-- Verifica que la base de datos está correctamente inicializada
-- Ejecuta las migraciones desde la sección de Migraciones
-- Revisa los logs del backend para más información
+## Nota didáctica
 
-## Navegadores Soportados
+El código tiene algunos comentarios intencionados para explicar conceptos básicos:
 
-- ✅ Chrome 90+
-- ✅ Firefox 88+
-- ✅ Safari 14+
-- ✅ Edge 90+
+- `useState`: estado local de pantalla.
+- `useEffect`: sincronización con sesión/navegador.
+- `useMemo`: datos derivados sin recalcular de más.
+- `useMutation`: escritura contra backend e invalidación de caché.
+- componentes con props: piezas pequeñas que reciben datos y devuelven UI.
 
-## Licencia
-
-© 2026 Escuela de Kung Fu. Todos los derechos reservados.
-
-## Soporte
-
-Para reportar problemas o sugerencias, contacta al administrador del sistema.
+No pretende ser un curso completo de React, pero sí una base legible para revisarla con alguien que viene de programación técnica no web.
