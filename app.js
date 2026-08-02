@@ -134,7 +134,19 @@ function setupEventListeners() {
             const studentModal = document.getElementById('student-profile-modal');
             const modal = document.getElementById('final-add-modal');
 
-            if (styleModal && styleModal.style.display === 'flex') {
+            const calDetailModal = document.getElementById('cal-event-detail-modal');
+            const calAddModal = document.getElementById('cal-add-event-modal');
+            const calDeleteSeriesModal = document.getElementById('cal-delete-series-modal');
+            const calRegSeriesModal = document.getElementById('cal-register-series-modal');
+            if (calRegSeriesModal && calRegSeriesModal.style.display === 'flex') {
+                calRegSeriesModal.style.display = 'none';
+            } else if (calDeleteSeriesModal && calDeleteSeriesModal.style.display === 'flex') {
+                calDeleteSeriesModal.style.display = 'none';
+            } else if (calDetailModal && calDetailModal.style.display === 'flex') {
+                closeCalendarDetailModal();
+            } else if (calAddModal && calAddModal.style.display === 'flex') {
+                closeAddEventModal();
+            } else if (styleModal && styleModal.style.display === 'flex') {
                 closeStyleProfileModal();
             } else if (instructorModal && instructorModal.style.display === 'flex') {
                 closeInstructorProfileModal();
@@ -195,6 +207,8 @@ function setupEventListeners() {
     setupStyleProfileEventListeners();
     setupFormProfileEventListeners();
     setupGradeProfileEventListeners();
+    setupCalendarEventListeners();
+    setupFinalViewCalendarListeners();
 }
 
 async function initializeSession() {
@@ -253,6 +267,9 @@ function setSessionUser(sessionUser) {
     appState.currentUserStudentName = '';
     appState.hasStudentProfile = null;
     appState.hasInstructorProfile = null;
+    // Reset calendar data so it reloads fresh on next login
+    calendarState.loaded = false;
+    calendarState.events = [];
     updateAuthUi();
     applyRolePermissions();
     if (appState.sessionUser && !isAdminSession()) {
@@ -342,6 +359,9 @@ function applyRolePermissions() {
     document.getElementById('execute-migrate-btn').style.display = isAdmin ? 'inline-block' : 'none';
     document.getElementById('run-migrate-btn').style.display = isAdmin ? 'inline-block' : 'none';
 
+    const addEventBtn = document.getElementById('add-event-btn');
+    if (addEventBtn) addEventBtn.style.display = isAdmin ? 'inline-block' : 'none';
+
     applyFinalViewPermissions();
 }
 
@@ -355,10 +375,11 @@ function getAllowedFinalTabsForSession() {
     }
 
     if (isAdminSession()) {
-        return ['administradores', 'cursos', 'grados', 'formas', 'alumnos', 'instructores', 'estilos'];
+        return ['administradores', 'cursos', 'grados', 'formas', 'alumnos', 'instructores', 'estilos', 'calendario'];
     }
 
-    const allowedTabs = [];
+    // Calendario is always visible to any authenticated user
+    const allowedTabs = ['calendario'];
 
     if (appState.hasStudentProfile) {
         allowedTabs.push('alumnos');
@@ -368,8 +389,8 @@ function getAllowedFinalTabsForSession() {
         allowedTabs.push('instructores');
     }
 
-    if (allowedTabs.length === 0 && (appState.hasStudentProfile === null || appState.hasInstructorProfile === null)) {
-        return ['alumnos', 'instructores'];
+    if (allowedTabs.length === 1 && (appState.hasStudentProfile === null || appState.hasInstructorProfile === null)) {
+        return ['calendario', 'alumnos', 'instructores'];
     }
 
     return allowedTabs;
@@ -432,6 +453,10 @@ function applyFinalViewPermissions() {
     document.querySelectorAll('.final-tab-toolbar [data-table]').forEach(addBtn => {
         addBtn.style.display = canMutate ? 'inline-block' : 'none';
     });
+
+    // Botón de agregar actividad del calendario (no usa data-table)
+    const fvAddEventBtn = document.getElementById('fv-add-event-btn');
+    if (fvAddEventBtn) fvAddEventBtn.style.display = canMutate ? 'inline-block' : 'none';
 
     const activeTabBtn = document.querySelector('.final-tab-btn.active');
     const activeTabName = activeTabBtn?.dataset?.tab;
@@ -502,6 +527,8 @@ function switchSection(sectionName) {
         loadTables();
     } else if (sectionName === 'settings') {
         loadSettings();
+    } else if (sectionName === 'calendario') {
+        loadCalendarData();
     }
 }
 
@@ -738,6 +765,13 @@ async function loadFinalTabData(tableName) {
         if (tableContainer) {
             tableContainer.innerHTML = '<div class="final-table-empty"><p>No tienes permisos para ver esta seccion</p></div>';
         }
+        return;
+    }
+
+    // El calendario tiene su propio sistema de renderizado
+    if (tableName === 'calendario') {
+        await loadCalendarData();
+        renderFvCalendar();
         return;
     }
 
@@ -3058,7 +3092,7 @@ function buildInstructorCourseAssignments(coursesState) {
             tema: course.tema || '',
             assigned: links.length > 0,
             links,
-            fecha_hora: referenceLink?.fecha_hora ? String(referenceLink.fecha_hora).slice(0, 16) : '',
+            fecha_hora: referenceLink?.fecha_hora ? toLocalDateTimeInput(referenceLink.fecha_hora) : '',
         };
     });
 }
@@ -3098,7 +3132,7 @@ function renderInstructorCoursesList() {
             ${sortedAssignments.length === 0
                 ? '<p class="text-muted">Este instructor aun no tiene cursos asignados.</p>'
                 : sortedAssignments.map(item => {
-                    const dateText = item.fecha_hora ? item.fecha_hora.replace('T', ' ') : 'Sin fecha';
+                    const dateText = item.fecha_hora ? toLocalDateTimeInput(item.fecha_hora).replace('T', ' ') : 'Sin fecha';
                     const labelText = item.tema ? `${item.nombre} · ${item.tema}` : item.nombre;
                     return `
                         <div class="grade-known-form-item">
@@ -4144,7 +4178,16 @@ async function apiCall(endpoint, options = {}, requestOptions = {}) {
             if (response.status === 401 && !skipUnauthorizedHandler) {
                 setSessionUser(null);
             }
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            // Try to extract the actual error message from the response body
+            let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            try {
+                const body = await response.json();
+                if (body?.message) errorMessage = body.message;
+                else if (body?.error) errorMessage = `${body.error}${body.path ? ` (${body.path})` : ''}`;
+            } catch (_) {
+                // Body not JSON — keep the default message
+            }
+            throw new Error(errorMessage);
         }
 
         if (response.status === 204) {
@@ -5289,3 +5332,1187 @@ style.textContent = `
     }
 `;
 document.head.appendChild(style);
+
+// ==================== Calendario ====================
+
+// Helpers para convertir fecha_hora del servidor (puede venir con zona UTC) a hora local
+function toLocalDateTimeInput(fechaHoraStr) {
+    if (!fechaHoraStr) return '';
+    const s = String(fechaHoraStr).trim();
+    const hasTz = /Z$/i.test(s) || /[+-]\d{2}:?\d{2}$/.test(s);
+    if (hasTz) {
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) {
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        }
+    }
+    return s.replace(' ', 'T').slice(0, 16);
+}
+
+function getLocalDateKey(fechaHoraStr) {
+    return toLocalDateTimeInput(fechaHoraStr).slice(0, 10);
+}
+
+function getLocalTimeHHMM(fechaHoraStr) {
+    return toLocalDateTimeInput(fechaHoraStr).slice(11, 16);
+}
+
+const calendarState = {
+    year: new Date().getFullYear(),
+    month: new Date().getMonth(),
+    view: 'month',
+    events: [],
+    cursos: [],
+    instructores: [],
+    loaded: false,
+    editingEventRows: [],
+};
+
+function setupCalendarEventListeners() {
+    // View toggle
+    document.querySelectorAll('.calendar-view-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            switchCalendarView(btn.dataset.calView);
+        });
+    });
+
+    // Month navigation
+    document.getElementById('cal-prev-btn').addEventListener('click', () => {
+        calendarState.month--;
+        if (calendarState.month < 0) { calendarState.month = 11; calendarState.year--; }
+        renderCalendar();
+    });
+    document.getElementById('cal-next-btn').addEventListener('click', () => {
+        calendarState.month++;
+        if (calendarState.month > 11) { calendarState.month = 0; calendarState.year++; }
+        renderCalendar();
+    });
+    document.getElementById('cal-today-btn').addEventListener('click', () => {
+        const now = new Date();
+        calendarState.year = now.getFullYear();
+        calendarState.month = now.getMonth();
+        renderCalendar();
+    });
+
+    document.getElementById('reload-calendar-btn').addEventListener('click', () => {
+        calendarState.loaded = false;
+        loadCalendarData();
+    });
+
+    document.getElementById('add-event-btn').addEventListener('click', () => {
+        openAddEventModal();
+    });
+
+    // Detail modal
+    document.getElementById('cal-detail-close-x').addEventListener('click', closeCalendarDetailModal);
+    document.getElementById('cal-detail-close-btn').addEventListener('click', closeCalendarDetailModal);
+    document.getElementById('cal-event-detail-modal').addEventListener('click', e => {
+        if (e.target.id === 'cal-event-detail-modal') closeCalendarDetailModal();
+    });
+    document.getElementById('cal-detail-edit-btn').addEventListener('click', () => {
+        const rows = calendarState.editingEventRows;
+        if (rows && rows.length > 0) {
+            closeCalendarDetailModal();
+            openAddEventModal(null, rows);
+        }
+    });
+    document.getElementById('cal-detail-delete-btn').addEventListener('click', () => {
+        deleteCalendarEvents(calendarState.editingEventRows);
+    });
+    document.getElementById('cal-register-btn').addEventListener('click', registerToCalendarEvent);
+    document.getElementById('cal-unregister-btn').addEventListener('click', unregisterFromCalendarEvent);
+
+    // Add/edit modal
+    document.getElementById('cal-add-close-x').addEventListener('click', closeAddEventModal);
+    document.getElementById('cal-add-cancel-btn').addEventListener('click', closeAddEventModal);
+    document.getElementById('cal-add-event-modal').addEventListener('click', e => {
+        if (e.target.id === 'cal-add-event-modal') closeAddEventModal();
+    });
+    document.getElementById('cal-add-save-btn').addEventListener('click', saveCalendarEvent);
+
+    // Recurrence toggle
+    document.querySelectorAll('input[name="cal-recurrence"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            const weeklyOpts = document.getElementById('cal-weekly-options');
+            weeklyOpts.style.display = radio.value === 'weekly' && radio.checked ? 'block' : 'none';
+        });
+    });
+}
+
+async function loadCalendarData() {
+    if (calendarState.loaded) return;
+
+    try {
+        const [scheduledRows, cursosRows, instructoresRows] = await Promise.all([
+            apiCall('/api/database/tables/cursos_agendados/rows?limit=5000', {}, { silent: true }),
+            apiCall('/api/database/tables/cursos/rows?limit=500', {}, { silent: true }),
+            apiCall('/api/database/tables/instructores/rows?limit=500', {}, { silent: true }),
+        ]);
+
+        calendarState.cursos = cursosRows || [];
+        calendarState.instructores = instructoresRows || [];
+
+        const cursoMap = {};
+        (cursosRows || []).forEach(c => { cursoMap[String(c.id_curso)] = c; });
+        const instructorMap = {};
+        (instructoresRows || []).forEach(i => { instructorMap[String(i.id_instructor)] = i; });
+
+        calendarState.events = (scheduledRows || []).map(row => ({
+            ...row,
+            _curso: cursoMap[String(row.id_curso)] || null,
+            _instructor: instructorMap[String(row.id_instructor)] || null,
+        }));
+
+        calendarState.loaded = true;
+        renderCalendar();
+        renderFvCalendar();
+    } catch (error) {
+        showToast('No se pudo cargar el calendario', 'error');
+    }
+}
+
+function getCalendarEventsByDate() {
+    const byDate = {};
+    calendarState.events.forEach(ev => {
+        if (!ev.fecha_hora) return;
+        const dateKey = getLocalDateKey(ev.fecha_hora);
+        if (!byDate[dateKey]) byDate[dateKey] = [];
+        byDate[dateKey].push(ev);
+    });
+    return byDate;
+}
+
+function renderCalendar() {
+    if (calendarState.view === 'month') {
+        renderCalendarMonth();
+    } else {
+        renderCalendarAgenda();
+    }
+    updateCalendarMonthTitle();
+}
+
+function updateCalendarMonthTitle() {
+    const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    document.getElementById('cal-month-title').textContent = `${months[calendarState.month]} ${calendarState.year}`;
+}
+
+function renderCalendarMonth() {
+    const grid = document.getElementById('cal-grid');
+    if (!grid) return;
+
+    const byDate = getCalendarEventsByDate();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const firstDay = new Date(calendarState.year, calendarState.month, 1);
+    const lastDay = new Date(calendarState.year, calendarState.month + 1, 0);
+    const startDayOfWeek = firstDay.getDay();
+    const daysInMonth = lastDay.getDate();
+    const daysInPrevMonth = new Date(calendarState.year, calendarState.month, 0).getDate();
+
+    const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    let html = dayNames.map(d => `<div class="cal-day-header">${d}</div>`).join('');
+
+    // Padding cells from previous month
+    for (let i = 0; i < startDayOfWeek; i++) {
+        const day = daysInPrevMonth - startDayOfWeek + 1 + i;
+        const prevM = calendarState.month === 0 ? 11 : calendarState.month - 1;
+        const prevY = calendarState.month === 0 ? calendarState.year - 1 : calendarState.year;
+        const dateKey = `${prevY}-${String(prevM + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        html += renderCalendarDayCell(day, dateKey, true, byDate, false);
+    }
+
+    // Current month cells
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateKey = `${calendarState.year}-${String(calendarState.month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const cellDate = new Date(calendarState.year, calendarState.month, d);
+        cellDate.setHours(0,0,0,0);
+        const isToday = cellDate.getTime() === today.getTime();
+        html += renderCalendarDayCell(d, dateKey, false, byDate, isToday);
+    }
+
+    // Trailing padding
+    const totalCells = Math.ceil((startDayOfWeek + daysInMonth) / 7) * 7;
+    const remaining = totalCells - startDayOfWeek - daysInMonth;
+    for (let i = 1; i <= remaining; i++) {
+        const nextM = calendarState.month === 11 ? 0 : calendarState.month + 1;
+        const nextY = calendarState.month === 11 ? calendarState.year + 1 : calendarState.year;
+        const dateKey = `${nextY}-${String(nextM + 1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+        html += renderCalendarDayCell(i, dateKey, true, byDate, false);
+    }
+
+    grid.innerHTML = html;
+
+    grid.querySelectorAll('.cal-day').forEach(cell => {
+        cell.classList.toggle('admin-mode', isAdminSession());
+    });
+
+    grid.querySelectorAll('.cal-event-chip[data-event-date]').forEach(chip => {
+        chip.addEventListener('click', e => {
+            e.stopPropagation();
+            showCalendarEventDetail(chip.dataset.eventDate, chip.dataset.cursoId);
+        });
+    });
+
+    grid.querySelectorAll('.cal-more-events[data-event-date]').forEach(chip => {
+        chip.addEventListener('click', e => {
+            e.stopPropagation();
+            switchCalendarView('agenda');
+        });
+    });
+
+    if (isAdminSession()) {
+        grid.querySelectorAll('.cal-day[data-date-key]:not(.other-month)').forEach(cell => {
+            cell.addEventListener('click', () => {
+                openAddEventModal(cell.dataset.dateKey);
+            });
+        });
+    }
+}
+
+function renderCalendarDayCell(dayNum, dateKey, otherMonth, byDate, isToday) {
+    const events = byDate[dateKey] || [];
+
+    // Group by curso+time to merge multi-instructor rows into one chip
+    const groupMap = {};
+    events.forEach(ev => {
+        const hour = getLocalTimeHHMM(ev.fecha_hora);
+        const key = `${ev.id_curso}|${hour}`;
+        if (!groupMap[key]) groupMap[key] = { ev, instructors: [] };
+        if (ev._instructor) groupMap[key].instructors.push(ev._instructor.nombre || `#${ev.id_instructor}`);
+    });
+
+    const groups = Object.values(groupMap).sort((a, b) =>
+        getLocalTimeHHMM(a.ev.fecha_hora).localeCompare(getLocalTimeHHMM(b.ev.fecha_hora))
+    );
+    const maxShow = 3;
+    const shown = groups.slice(0, maxShow);
+    const extra = groups.length - maxShow;
+
+    const todayClass = isToday ? ' today' : '';
+    const otherClass = otherMonth ? ' other-month' : '';
+
+    let chipsHtml = shown.map(g => {
+        const curso = g.ev._curso;
+        const name = curso ? curso.nombre : `Curso ${g.ev.id_curso}`;
+        const hour = getLocalTimeHHMM(g.ev.fecha_hora);
+        const isActive = g.ev.activo !== false && g.ev.activo !== 0 && g.ev.activo !== '0';
+        const inactiveClass = isActive ? '' : ' inactive';
+        const hourText = hour ? `${hour} ` : '';
+        return `<span class="cal-event-chip${inactiveClass}" data-event-date="${dateKey}" data-curso-id="${g.ev.id_curso}" title="${name} — ${g.instructors.join(', ')}">${hourText}${name}</span>`;
+    }).join('');
+
+    if (extra > 0) {
+        chipsHtml += `<span class="cal-more-events" data-event-date="${dateKey}">+${extra} más</span>`;
+    }
+
+    return `<div class="cal-day${todayClass}${otherClass}" data-date-key="${dateKey}">
+        <div class="cal-day-number">${dayNum}</div>
+        ${chipsHtml}
+    </div>`;
+}
+
+function renderCalendarAgenda() {
+    const list = document.getElementById('cal-agenda-list');
+    if (!list) return;
+
+    if (!calendarState.loaded) {
+        list.innerHTML = '<div class="loading"><span class="spinner"></span> Cargando agenda...</div>';
+        return;
+    }
+
+    const sorted = [...calendarState.events].sort((a, b) =>
+        String(a.fecha_hora).localeCompare(String(b.fecha_hora))
+    );
+
+    if (sorted.length === 0) {
+        list.innerHTML = '<div class="cal-no-events"><p>No hay actividades agendadas.</p></div>';
+        return;
+    }
+
+    // Group by date
+    const byDate = {};
+    const dateOrder = [];
+    sorted.forEach(ev => {
+        const dateKey = getLocalDateKey(ev.fecha_hora);
+        if (!byDate[dateKey]) { byDate[dateKey] = []; dateOrder.push(dateKey); }
+        byDate[dateKey].push(ev);
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    let html = '';
+
+    dateOrder.forEach(dateKey => {
+        const dayEvents = byDate[dateKey];
+        const isToday = dateKey === today;
+        const dateLabel = formatAgendaDate(dateKey);
+
+        const eventsHtml = dayEvents.map(ev => {
+            const curso = ev._curso;
+            const instructor = ev._instructor;
+            const courseName = curso
+                ? (curso.tema ? `${curso.nombre} — ${curso.tema}` : curso.nombre)
+                : `Curso ${ev.id_curso}`;
+            const instructorName = instructor ? instructor.nombre : `Instructor ${ev.id_instructor}`;
+            const time = getLocalTimeHHMM(ev.fecha_hora);
+            const isActive = ev.activo !== false && ev.activo !== 0 && ev.activo !== '0';
+            const inactiveClass = isActive ? '' : ' inactive';
+            return `<div class="cal-agenda-event${inactiveClass}" data-event-date="${dateKey}" data-curso-id="${ev.id_curso}">
+                <div class="cal-agenda-time">${time}</div>
+                <div class="cal-agenda-event-info">
+                    <div class="cal-agenda-event-name">${courseName}</div>
+                    <div class="cal-agenda-event-meta">${instructorName}${isActive ? '' : ' <span class="cal-badge-inactive">Inactivo</span>'}</div>
+                </div>
+            </div>`;
+        }).join('');
+
+        html += `<div class="cal-agenda-day">
+            <div class="cal-agenda-day-header${isToday ? ' today-header' : ''}">${dateLabel}${isToday ? ' — Hoy' : ''}</div>
+            ${eventsHtml}
+        </div>`;
+    });
+
+    list.innerHTML = html;
+
+    list.querySelectorAll('.cal-agenda-event').forEach(el => {
+        el.addEventListener('click', () => {
+            showCalendarEventDetail(el.dataset.eventDate, el.dataset.cursoId);
+        });
+    });
+}
+
+function formatAgendaDate(dateKey) {
+    try {
+        const [year, month, day] = dateKey.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        return date.toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    } catch {
+        return dateKey;
+    }
+}
+
+function switchCalendarView(view) {
+    calendarState.view = view;
+
+    document.querySelectorAll('.calendar-view-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.calView === view);
+    });
+
+    const monthView = document.getElementById('calendar-month-view');
+    const agendaView = document.getElementById('calendar-agenda-view');
+
+    if (view === 'month') {
+        monthView.style.display = '';
+        agendaView.style.display = 'none';
+        renderCalendarMonth();
+    } else {
+        monthView.style.display = 'none';
+        agendaView.style.display = 'block';
+        renderCalendarAgenda();
+    }
+}
+
+function showCalendarEventDetail(dateKey, cursoId) {
+    const events = calendarState.events.filter(ev =>
+        getLocalDateKey(ev.fecha_hora) === dateKey &&
+        String(ev.id_curso) === String(cursoId)
+    );
+
+    if (events.length === 0) return;
+
+    calendarState.editingEventRows = events;
+
+    const firstEv = events[0];
+    const curso = firstEv._curso;
+    const courseName = curso ? curso.nombre : `Curso ${firstEv.id_curso}`;
+    const courseTema = curso?.tema || '';
+    const courseDesc = curso?.descripcion || '';
+    const dateLabel = formatAgendaDate(dateKey);
+    const time = getLocalTimeHHMM(firstEv.fecha_hora);
+    const instructors = events
+        .map(ev => ev._instructor?.nombre || `Instructor ${ev.id_instructor}`)
+        .filter((v, i, a) => a.indexOf(v) === i)
+        .join(', ');
+    const isActive = firstEv.activo !== false && firstEv.activo !== 0 && firstEv.activo !== '0';
+
+    document.getElementById('cal-detail-title').textContent = courseName;
+    document.getElementById('cal-detail-body').innerHTML = `
+        <div class="cal-detail-row">
+            <span class="cal-detail-label">Curso:</span>
+            <span class="cal-detail-value"><strong>${courseName}</strong></span>
+        </div>
+        ${courseTema ? `<div class="cal-detail-row"><span class="cal-detail-label">Tema:</span><span class="cal-detail-value">${courseTema}</span></div>` : ''}
+        ${courseDesc ? `<div class="cal-detail-row"><span class="cal-detail-label">Descripción:</span><span class="cal-detail-value">${courseDesc}</span></div>` : ''}
+        <div class="cal-detail-row">
+            <span class="cal-detail-label">Fecha:</span>
+            <span class="cal-detail-value">${dateLabel}</span>
+        </div>
+        <div class="cal-detail-row">
+            <span class="cal-detail-label">Hora:</span>
+            <span class="cal-detail-value">${time}</span>
+        </div>
+        <div class="cal-detail-row">
+            <span class="cal-detail-label">Instructor(es):</span>
+            <span class="cal-detail-value">${instructors}</span>
+        </div>
+        <div class="cal-detail-row">
+            <span class="cal-detail-label">Estado:</span>
+            <span class="cal-detail-value">${isActive ? 'Activo' : '<span class="cal-badge-inactive">Inactivo</span>'}</span>
+        </div>
+        <hr class="cal-detail-divider">
+        <div id="cal-detail-attendees" class="cal-detail-attendees-section">
+            <div class="loading" style="padding:12px 0;"><span class="spinner"></span> Cargando asistentes...</div>
+        </div>
+    `;
+
+    const isAdmin = isAdminSession();
+    document.getElementById('cal-detail-edit-btn').style.display = isAdmin ? 'inline-block' : 'none';
+    document.getElementById('cal-detail-delete-btn').style.display = isAdmin ? 'inline-block' : 'none';
+    // Register button visibility is resolved after loading attendees
+    document.getElementById('cal-register-btn').style.display = 'none';
+    document.getElementById('cal-unregister-btn').style.display = 'none';
+
+    document.getElementById('cal-event-detail-modal').style.display = 'flex';
+
+    // Load attendees asynchronously
+    loadEventAttendees();
+}
+
+// Returns 'alumno' | 'instructor' | 'administrador' | 'pending' | null
+function getSessionPersonType() {
+    if (!appState.sessionUser) return null;
+    if (isAdminSession()) return 'administrador';
+    if (appState.hasStudentProfile === true) return 'alumno';
+    if (appState.hasInstructorProfile === true) return 'instructor';
+    // Still resolving profiles
+    if (appState.hasStudentProfile === null || appState.hasInstructorProfile === null) return 'pending';
+    return null;
+}
+
+async function loadEventAttendees() {
+    const attendeesEl = document.getElementById('cal-detail-attendees');
+    if (!attendeesEl) return;
+
+    const eventRows = calendarState.editingEventRows;
+    if (!eventRows || eventRows.length === 0) return;
+
+    // Ensure profile flags are resolved for non-admin users before checking personType
+    if (appState.sessionUser && !isAdminSession() &&
+        (appState.hasStudentProfile === null || appState.hasInstructorProfile === null)) {
+        await ensureSessionProfileAccessResolved();
+    }
+
+    const ids = eventRows.map(r => Number(r.id_curso_agendado));
+
+    try {
+        const allRows = await apiCall('/api/database/tables/asistencias_curso/rows?limit=2000', {}, { silent: true });
+        const relevant = (allRows || []).filter(r => ids.includes(Number(r.id_curso_agendado)));
+
+        // For admin: resolve names from all three tables
+        let nameMap = {}; // key: "tipo:id", value: display name
+        if (isAdminSession() && relevant.length > 0) {
+            const [alumnos, instructores, admins] = await Promise.all([
+                apiCall('/api/database/tables/alumnos/rows?limit=3000', {}, { silent: true }),
+                apiCall('/api/database/tables/instructores/rows?limit=1000', {}, { silent: true }),
+                apiCall('/api/database/tables/administradores/rows?limit=100', {}, { silent: true }),
+            ]);
+            (alumnos || []).forEach(a => { nameMap[`alumno:${a.id_alumno}`] = a.nombre || `Alumno ${a.id_alumno}`; });
+            (instructores || []).forEach(i => { nameMap[`instructor:${i.id_instructor}`] = i.nombre || `Instructor ${i.id_instructor}`; });
+            (admins || []).forEach(ad => { nameMap[`admin:${ad.id_administrador}`] = ad.nombre || `Admin ${ad.id_administrador}`; });
+        }
+
+        const currentUserId = Number(appState.sessionUser?.userId);
+        const personType = getSessionPersonType();
+        let myRegistration;
+        if (personType === 'administrador') {
+            myRegistration = relevant.find(r => Number(r.id_administrador) === currentUserId);
+        } else if (personType === 'instructor') {
+            myRegistration = relevant.find(r => Number(r.id_instructor) === currentUserId);
+        } else if (personType === 'alumno') {
+            myRegistration = relevant.find(r => Number(r.id_alumno) === currentUserId);
+        }
+
+        const primaryId = ids[0];
+        renderEventAttendeesInModal(relevant, nameMap, personType, Boolean(myRegistration), myRegistration, primaryId);
+    } catch (error) {
+        if (attendeesEl) {
+            attendeesEl.innerHTML = '<p class="text-muted" style="font-size:0.85rem; margin-top:4px;">Gestión de asistentes no disponible.</p>';
+        }
+    }
+}
+
+function isEventPast(fechaHora) {
+    if (!fechaHora) return false;
+    const localDT = toLocalDateTimeInput(fechaHora);
+    if (!localDT) return false;
+    const eventDate = new Date(localDT);
+    return !isNaN(eventDate.getTime()) && eventDate < new Date();
+}
+
+function renderEventAttendeesInModal(attendees, nameMap, personType, isRegistered, myRegistration, primaryCursoAgendadoId) {
+    const attendeesEl = document.getElementById('cal-detail-attendees');
+    if (!attendeesEl) return;
+
+    const count = attendees.length;
+    const isAdmin = isAdminSession();
+    const canRegister = appState.sessionUser && personType !== null && personType !== 'pending';
+
+    // Check if the event is already in the past
+    const firstEv = calendarState.editingEventRows?.[0];
+    const isPast = firstEv ? isEventPast(firstEv.fecha_hora) : false;
+
+    let html = `
+        <div class="cal-detail-row">
+            <span class="cal-detail-label">Asistentes:</span>
+            <span class="cal-detail-value"><strong>${count}</strong> confirmado(s)${isPast ? ' <span class="cal-badge-inactive">Evento pasado</span>' : ''}</span>
+        </div>
+    `;
+
+    if (isAdmin) {
+        if (count > 0) {
+            html += `<div class="cal-attendees-list">`;
+            attendees.forEach(a => {
+                let name;
+                if (a.id_alumno != null) {
+                    name = nameMap[`alumno:${a.id_alumno}`] || `Alumno ${a.id_alumno}`;
+                } else if (a.id_instructor != null) {
+                    name = nameMap[`instructor:${a.id_instructor}`] || `Instructor ${a.id_instructor}`;
+                } else if (a.id_administrador != null) {
+                    name = nameMap[`admin:${a.id_administrador}`] || `Admin ${a.id_administrador}`;
+                } else {
+                    name = 'Desconocido';
+                }
+                html += `<div class="cal-attendee-item">👤 ${name}</div>`;
+            });
+            html += `</div>`;
+        } else {
+            html += `<p class="text-muted" style="font-size:0.85rem; margin-top:2px;">Aún no hay asistentes confirmados.</p>`;
+        }
+    }
+
+    attendeesEl.innerHTML = html;
+
+    const registerBtn = document.getElementById('cal-register-btn');
+    const unregisterBtn = document.getElementById('cal-unregister-btn');
+    if (registerBtn) registerBtn.style.display = 'none';
+    if (unregisterBtn) unregisterBtn.style.display = 'none';
+
+    if (canRegister) {
+        if (isRegistered && myRegistration) {
+            // Allow cancellation even for past events
+            if (unregisterBtn) {
+                unregisterBtn.style.display = 'inline-block';
+                unregisterBtn.dataset.asistenciaId = myRegistration.id_asistencia;
+            }
+        } else if (!isPast) {
+            // Only allow new registration for future events
+            if (registerBtn) {
+                registerBtn.style.display = 'inline-block';
+                registerBtn.dataset.cursoAgendadoId = primaryCursoAgendadoId;
+                registerBtn.dataset.personType = personType;
+            }
+        }
+    }
+}
+
+async function registerToCalendarEvent() {
+    const btn = document.getElementById('cal-register-btn');
+    const idCursoAgendado = Number(btn?.dataset?.cursoAgendadoId);
+    if (!idCursoAgendado) return;
+
+    const personType = btn?.dataset?.personType || getSessionPersonType();
+    const userId = Number(appState.sessionUser?.userId);
+    if (!Number.isFinite(userId) || userId <= 0) {
+        showToast('No se pudo identificar tu sesión', 'error');
+        return;
+    }
+    if (!personType || personType === 'pending' || personType === null) {
+        showToast('No se pudo determinar tu tipo de perfil', 'error');
+        return;
+    }
+
+    // Detect if this event is part of a series, filtering from clicked date onwards
+    const firstEv = calendarState.editingEventRows?.[0];
+    let targetIds = [idCursoAgendado];
+
+    if (firstEv) {
+        const cursoId = String(firstEv.id_curso);
+        const eventTime = getLocalTimeHHMM(firstEv.fecha_hora);
+        const clickedDateKey = getLocalDateKey(firstEv.fecha_hora);
+        const now = new Date();
+
+        // Only include occurrences from the clicked date onwards that haven't passed yet
+        const seriesByDate = {};
+        calendarState.events
+            .filter(ev => {
+                if (String(ev.id_curso) !== cursoId || getLocalTimeHHMM(ev.fecha_hora) !== eventTime) return false;
+                const evDateKey = getLocalDateKey(ev.fecha_hora);
+                if (evDateKey < clickedDateKey) return false; // Before clicked date
+                const evLocal = toLocalDateTimeInput(ev.fecha_hora);
+                if (evLocal && new Date(evLocal) < now) return false; // Already past
+                return true;
+            })
+            .forEach(ev => {
+                const dk = getLocalDateKey(ev.fecha_hora);
+                if (!seriesByDate[dk]) seriesByDate[dk] = Number(ev.id_curso_agendado);
+            });
+
+        const allSeriesIds = Object.values(seriesByDate);
+
+        if (allSeriesIds.length > 1) {
+            const courseName = firstEv._curso?.nombre || `Curso ${firstEv.id_curso}`;
+            const choice = await showRegisterSeriesDialog(courseName, eventTime, allSeriesIds.length - 1);
+            if (choice === null) return;
+            if (choice === 'series') targetIds = allSeriesIds;
+        } else if (allSeriesIds.length === 1) {
+            // Series exists but only one future occurrence — use it directly
+            targetIds = allSeriesIds;
+        }
+    }
+
+    btn.disabled = true;
+    try {
+        let registered = 0;
+        for (const tid of targetIds) {
+            const payload = { id_curso_agendado: tid, id_alumno: null, id_instructor: null, id_administrador: null };
+            if (personType === 'alumno') payload.id_alumno = userId;
+            else if (personType === 'instructor') payload.id_instructor = userId;
+            else if (personType === 'administrador') payload.id_administrador = userId;
+
+            try {
+                await apiCall('/api/database/tables/asistencias_curso/rows', {
+                    method: 'POST',
+                    body: JSON.stringify(payload),
+                }, { silent: true });
+                registered++;
+            } catch (e) {
+                // Skip duplicates (already registered for that occurrence)
+            }
+        }
+
+        const msg = targetIds.length > 1
+            ? `¡Asistencia confirmada para ${registered} de ${targetIds.length} clases de la serie!`
+            : '¡Asistencia confirmada!';
+        showToast(msg, 'success');
+        await loadEventAttendees();
+    } catch (error) {
+        showToast(`Error al confirmar: ${error.message || 'Intenta nuevamente'}`, 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function showRegisterSeriesDialog(courseName, eventTime, otherCount) {
+    return new Promise(resolve => {
+        const modal = document.getElementById('cal-register-series-modal');
+        document.getElementById('cal-reg-series-body').innerHTML = `
+            <p>La actividad <strong>"${courseName}"</strong> a las <strong>${eventTime}</strong>
+            forma parte de una serie con <strong>${otherCount}</strong> ocurrencia(s) más.</p>
+            <p style="margin-top:12px;">¿A cuáles quieres confirmar asistencia?</p>
+        `;
+
+        const closeWith = (result) => {
+            modal.style.display = 'none';
+            modal.removeEventListener('click', onBackdrop);
+            document.getElementById('cal-reg-series-close-x').removeEventListener('click', onClose);
+            document.getElementById('cal-reg-series-cancel-btn').removeEventListener('click', onClose);
+            document.getElementById('cal-reg-single-btn').removeEventListener('click', onSingle);
+            document.getElementById('cal-reg-all-btn').removeEventListener('click', onAll);
+            resolve(result);
+        };
+
+        const onBackdrop = (e) => { if (e.target.id === 'cal-register-series-modal') closeWith(null); };
+        const onClose  = () => closeWith(null);
+        const onSingle = () => closeWith('single');
+        const onAll    = () => closeWith('series');
+
+        modal.addEventListener('click', onBackdrop);
+        document.getElementById('cal-reg-series-close-x').addEventListener('click', onClose);
+        document.getElementById('cal-reg-series-cancel-btn').addEventListener('click', onClose);
+        document.getElementById('cal-reg-single-btn').addEventListener('click', onSingle);
+        document.getElementById('cal-reg-all-btn').addEventListener('click', onAll);
+
+        modal.style.display = 'flex';
+    });
+}
+
+async function unregisterFromCalendarEvent() {
+    const btn = document.getElementById('cal-unregister-btn');
+    const idAsistencia = Number(btn?.dataset?.asistenciaId);
+    if (!idAsistencia) return;
+
+    btn.disabled = true;
+    try {
+        await apiCall(`/api/database/tables/asistencias_curso/rows/${encodeURIComponent(idAsistencia)}`, {
+            method: 'DELETE',
+        });
+        showToast('Asistencia cancelada', 'info');
+        await loadEventAttendees();
+    } catch (error) {
+        showToast(`Error al cancelar: ${error.message || 'Intenta nuevamente'}`, 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function closeCalendarDetailModal() {
+    document.getElementById('cal-event-detail-modal').style.display = 'none';
+    calendarState.editingEventRows = [];
+}
+
+async function openAddEventModal(prefillDate = null, editRows = null) {
+    if (!isAdminSession()) {
+        showToast('Solo administradores pueden agregar actividades', 'error');
+        return;
+    }
+
+    // Asegura que los datos de cursos e instructores estén disponibles
+    if (!calendarState.loaded) {
+        await loadCalendarData();
+    }
+
+    const modal = document.getElementById('cal-add-event-modal');
+
+    // Populate course selector
+    const cursoSelect = document.getElementById('cal-event-curso');
+    cursoSelect.innerHTML = '<option value="">Selecciona un curso</option>' +
+        calendarState.cursos.map(c =>
+            `<option value="${c.id_curso}">${c.nombre}${c.tema ? ` — ${c.tema}` : ''}</option>`
+        ).join('');
+
+    // Populate instructor checkboxes
+    const instrList = document.getElementById('cal-instructores-list');
+    instrList.innerHTML = calendarState.instructores.length === 0
+        ? '<p class="text-muted">No hay instructores disponibles.</p>'
+        : calendarState.instructores
+            .filter(i => i.activo !== false && i.activo !== 0 && i.activo !== '0')
+            .map(i => `
+                <label class="checkbox-label">
+                    <input type="checkbox" class="cal-instructor-cb" value="${i.id_instructor}">
+                    ${i.nombre || `Instructor ${i.id_instructor}`}${i.especialidad ? ` <span class="text-muted">— ${i.especialidad}</span>` : ''}
+                </label>
+            `).join('');
+
+    // Reset recurrence
+    document.querySelectorAll('input[name="cal-recurrence"]').forEach(r => { r.checked = r.value === 'none'; });
+    document.getElementById('cal-weekly-options').style.display = 'none';
+    document.querySelectorAll('.cal-wday').forEach(cb => { cb.checked = false; });
+    document.getElementById('cal-rec-weeks').value = 8;
+
+    if (editRows && editRows.length > 0) {
+        document.getElementById('cal-add-event-title').textContent = 'Editar Actividad';
+        calendarState.editingEventRows = editRows;
+
+        const first = editRows[0];
+        cursoSelect.value = String(first.id_curso);
+        document.getElementById('cal-event-fecha').value = first.fecha_hora
+            ? toLocalDateTimeInput(first.fecha_hora)
+            : '';
+        const isActive = first.activo !== false && first.activo !== 0 && first.activo !== '0';
+        document.getElementById('cal-event-activo').checked = isActive;
+
+        const instrIds = editRows.map(r => String(r.id_instructor));
+        document.querySelectorAll('.cal-instructor-cb').forEach(cb => {
+            cb.checked = instrIds.includes(cb.value);
+        });
+    } else {
+        document.getElementById('cal-add-event-title').textContent = 'Agregar Actividad';
+        calendarState.editingEventRows = [];
+        document.getElementById('cal-event-activo').checked = true;
+        document.getElementById('cal-event-fecha').value = prefillDate ? `${prefillDate}T08:00` : '';
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeAddEventModal() {
+    document.getElementById('cal-add-event-modal').style.display = 'none';
+    calendarState.editingEventRows = [];
+}
+
+async function saveCalendarEvent() {
+    return runProtectedSaveAction('cal-event-save', 'cal-add-save-btn', async () => {
+        if (!isAdminSession()) {
+            showToast('Solo administradores pueden guardar actividades', 'error');
+            return;
+        }
+
+        const cursoId = document.getElementById('cal-event-curso').value;
+        if (!cursoId) { showToast('Selecciona un curso', 'error'); return; }
+
+        const selectedInstructors = Array.from(document.querySelectorAll('.cal-instructor-cb:checked')).map(cb => cb.value);
+        if (selectedInstructors.length === 0) { showToast('Selecciona al menos un instructor', 'error'); return; }
+
+        const fechaHora = document.getElementById('cal-event-fecha').value;
+        if (!fechaHora) { showToast('Selecciona fecha y hora', 'error'); return; }
+
+        const activo = document.getElementById('cal-event-activo').checked;
+        const recurrence = document.querySelector('input[name="cal-recurrence"]:checked')?.value || 'none';
+
+        // Build list of date-time strings to schedule
+        const dateTimes = [];
+
+        if (recurrence === 'weekly') {
+            const selectedWeekdays = Array.from(document.querySelectorAll('.cal-wday:checked')).map(cb => Number(cb.value));
+            if (selectedWeekdays.length === 0) { showToast('Selecciona al menos un día de la semana', 'error'); return; }
+
+            const numWeeks = Math.max(1, Math.min(52, Number(document.getElementById('cal-rec-weeks').value) || 8));
+            const timePart = fechaHora.slice(11, 16);
+            const [yr, mo, dy] = fechaHora.slice(0, 10).split('-').map(Number);
+            const baseDate = new Date(yr, mo - 1, dy);
+
+            for (let w = 0; w < numWeeks; w++) {
+                for (const wd of selectedWeekdays) {
+                    const d = new Date(baseDate);
+                    d.setDate(d.getDate() + (wd - d.getDay() + w * 7));
+                    const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    dateTimes.push(`${ds}T${timePart}`);
+                }
+            }
+        } else {
+            dateTimes.push(fechaHora);
+        }
+
+        const uniqueDateTimes = [...new Set(dateTimes)].sort();
+
+        try {
+            // In edit mode: delete old rows first
+            if (calendarState.editingEventRows.length > 0) {
+                for (const row of calendarState.editingEventRows) {
+                    await apiCall(`/api/database/tables/cursos_agendados/rows/${encodeURIComponent(row.id_curso_agendado)}`, {
+                        method: 'DELETE',
+                    });
+                }
+            }
+
+            // Create new rows
+            let created = 0;
+            for (const dt of uniqueDateTimes) {
+                for (const instrId of selectedInstructors) {
+                    await apiCall('/api/database/tables/cursos_agendados/rows', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            id_curso: Number(cursoId),
+                            id_instructor: Number(instrId),
+                            fecha_hora: dt,
+                            activo: activo,
+                        }),
+                    });
+                    created++;
+                }
+            }
+
+            const msg = recurrence === 'weekly'
+                ? `✓ ${created} entrada(s) creada(s) en el calendario`
+                : '✓ Actividad guardada en el calendario';
+            showToast(msg, 'success');
+            closeAddEventModal();
+            calendarState.loaded = false;
+            await loadCalendarData();
+        } catch (error) {
+            showToast(`Error al guardar: ${error.message || 'Intenta nuevamente'}`, 'error');
+        }
+    });
+}
+
+async function deleteCalendarEvents(rows) {
+    if (!isAdminSession()) {
+        showToast('Solo administradores pueden eliminar actividades', 'error');
+        return;
+    }
+    if (!rows || rows.length === 0) return;
+
+    const courseName = rows[0]._curso?.nombre || `Curso ${rows[0].id_curso}`;
+    const cursoId = String(rows[0].id_curso);
+    const eventDate = getLocalDateKey(rows[0].fecha_hora);
+    const eventTime = getLocalTimeHHMM(rows[0].fecha_hora);
+
+    // Detect series: same id_curso + same time-of-day across multiple dates
+    const allSeriesRows = calendarState.events.filter(ev =>
+        String(ev.id_curso) === cursoId &&
+        getLocalTimeHHMM(ev.fecha_hora) === eventTime
+    );
+    const isSeries = allSeriesRows.length > rows.length;
+
+    let rowsToDelete;
+
+    if (isSeries) {
+        const otherDatesCount = new Set(
+            allSeriesRows
+                .map(ev => getLocalDateKey(ev.fecha_hora))
+                .filter(d => d !== eventDate)
+        ).size;
+
+        const choice = await showDeleteSeriesDialog(courseName, eventDate, eventTime, otherDatesCount);
+        if (choice === null) return;
+        rowsToDelete = choice === 'series' ? allSeriesRows : rows;
+    } else {
+        if (!confirm(`¿Eliminar la actividad "${courseName}" del ${eventDate}?`)) return;
+        rowsToDelete = rows;
+    }
+
+    try {
+        for (const row of rowsToDelete) {
+            await apiCall(`/api/database/tables/cursos_agendados/rows/${encodeURIComponent(row.id_curso_agendado)}`, {
+                method: 'DELETE',
+            });
+        }
+        const msg = rowsToDelete === allSeriesRows
+            ? `Serie "${courseName}" eliminada del calendario`
+            : `Actividad del ${eventDate} eliminada del calendario`;
+        showToast(msg, 'success');
+        closeCalendarDetailModal();
+        calendarState.loaded = false;
+        await loadCalendarData();
+    } catch (error) {
+        showToast(`Error al eliminar: ${error.message || 'Intenta nuevamente'}`, 'error');
+    }
+}
+
+function showDeleteSeriesDialog(courseName, eventDate, eventTime, otherDatesCount) {
+    return new Promise(resolve => {
+        const modal = document.getElementById('cal-delete-series-modal');
+        document.getElementById('cal-delete-series-body').innerHTML = `
+            <p>La actividad <strong>"${courseName}"</strong> a las <strong>${eventTime}</strong> forma parte de una serie
+            con <strong>${otherDatesCount}</strong> ocurrencia(s) más en el calendario.</p>
+            <p style="margin-top:12px;">¿Qué deseas eliminar?</p>
+        `;
+
+        const closeWith = (result) => {
+            modal.style.display = 'none';
+            modal.removeEventListener('click', onBackdrop);
+            document.getElementById('cal-delete-series-close-x').removeEventListener('click', onClose);
+            document.getElementById('cal-delete-series-cancel-btn').removeEventListener('click', onClose);
+            document.getElementById('cal-delete-single-btn').removeEventListener('click', onSingle);
+            document.getElementById('cal-delete-series-btn').removeEventListener('click', onSeries);
+            resolve(result);
+        };
+
+        const onBackdrop = (e) => { if (e.target.id === 'cal-delete-series-modal') closeWith(null); };
+        const onClose  = () => closeWith(null);
+        const onSingle = () => closeWith('single');
+        const onSeries = () => closeWith('series');
+
+        modal.addEventListener('click', onBackdrop);
+        document.getElementById('cal-delete-series-close-x').addEventListener('click', onClose);
+        document.getElementById('cal-delete-series-cancel-btn').addEventListener('click', onClose);
+        document.getElementById('cal-delete-single-btn').addEventListener('click', onSingle);
+        document.getElementById('cal-delete-series-btn').addEventListener('click', onSeries);
+
+        modal.style.display = 'flex';
+    });
+}
+
+// ==================== Calendario — Vista Final ====================
+const fvCalState = {
+    year: new Date().getFullYear(),
+    month: new Date().getMonth(),
+    view: 'month',
+};
+
+function setupFinalViewCalendarListeners() {
+    document.querySelectorAll('.fv-calendar-view-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchFvCalendarView(btn.dataset.fvCalView));
+    });
+
+    document.getElementById('fv-cal-prev-btn').addEventListener('click', () => {
+        fvCalState.month--;
+        if (fvCalState.month < 0) { fvCalState.month = 11; fvCalState.year--; }
+        renderFvCalendar();
+    });
+    document.getElementById('fv-cal-next-btn').addEventListener('click', () => {
+        fvCalState.month++;
+        if (fvCalState.month > 11) { fvCalState.month = 0; fvCalState.year++; }
+        renderFvCalendar();
+    });
+    document.getElementById('fv-cal-today-btn').addEventListener('click', () => {
+        const now = new Date();
+        fvCalState.year = now.getFullYear();
+        fvCalState.month = now.getMonth();
+        renderFvCalendar();
+    });
+    document.getElementById('fv-reload-calendar-btn').addEventListener('click', async () => {
+        calendarState.loaded = false;
+        await loadCalendarData();
+        renderFvCalendar();
+    });
+    document.getElementById('fv-add-event-btn').addEventListener('click', () => {
+        openAddEventModal();
+    });
+}
+
+function renderFvCalendar() {
+    if (fvCalState.view === 'month') {
+        renderFvCalendarMonth();
+    } else {
+        renderFvCalendarAgenda();
+    }
+    updateFvCalendarMonthTitle();
+}
+
+function updateFvCalendarMonthTitle() {
+    const months = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const el = document.getElementById('fv-cal-month-title');
+    if (el) el.textContent = `${months[fvCalState.month]} ${fvCalState.year}`;
+}
+
+function renderFvCalendarMonth() {
+    const grid = document.getElementById('fv-cal-grid');
+    if (!grid) return;
+
+    const byDate = getCalendarEventsByDate();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const firstDay = new Date(fvCalState.year, fvCalState.month, 1);
+    const lastDay = new Date(fvCalState.year, fvCalState.month + 1, 0);
+    const startDayOfWeek = firstDay.getDay();
+    const daysInMonth = lastDay.getDate();
+    const daysInPrevMonth = new Date(fvCalState.year, fvCalState.month, 0).getDate();
+
+    const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    let html = dayNames.map(d => `<div class="cal-day-header">${d}</div>`).join('');
+
+    for (let i = 0; i < startDayOfWeek; i++) {
+        const day = daysInPrevMonth - startDayOfWeek + 1 + i;
+        const prevM = fvCalState.month === 0 ? 11 : fvCalState.month - 1;
+        const prevY = fvCalState.month === 0 ? fvCalState.year - 1 : fvCalState.year;
+        const dk = `${prevY}-${String(prevM + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        html += renderCalendarDayCell(day, dk, true, byDate, false);
+    }
+
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dk = `${fvCalState.year}-${String(fvCalState.month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const cellDate = new Date(fvCalState.year, fvCalState.month, d);
+        cellDate.setHours(0,0,0,0);
+        html += renderCalendarDayCell(d, dk, false, byDate, cellDate.getTime() === today.getTime());
+    }
+
+    const totalCells = Math.ceil((startDayOfWeek + daysInMonth) / 7) * 7;
+    const remaining = totalCells - startDayOfWeek - daysInMonth;
+    for (let i = 1; i <= remaining; i++) {
+        const nextM = fvCalState.month === 11 ? 0 : fvCalState.month + 1;
+        const nextY = fvCalState.month === 11 ? fvCalState.year + 1 : fvCalState.year;
+        const dk = `${nextY}-${String(nextM + 1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+        html += renderCalendarDayCell(i, dk, true, byDate, false);
+    }
+
+    grid.innerHTML = html;
+
+    grid.querySelectorAll('.cal-day').forEach(cell => {
+        cell.classList.toggle('admin-mode', isAdminSession());
+    });
+
+    grid.querySelectorAll('.cal-event-chip[data-event-date]').forEach(chip => {
+        chip.addEventListener('click', e => {
+            e.stopPropagation();
+            showCalendarEventDetail(chip.dataset.eventDate, chip.dataset.cursoId);
+        });
+    });
+
+    grid.querySelectorAll('.cal-more-events[data-event-date]').forEach(chip => {
+        chip.addEventListener('click', e => {
+            e.stopPropagation();
+            switchFvCalendarView('agenda');
+        });
+    });
+
+    if (isAdminSession()) {
+        grid.querySelectorAll('.cal-day[data-date-key]:not(.other-month)').forEach(cell => {
+            cell.addEventListener('click', () => {
+                openAddEventModal(cell.dataset.dateKey);
+            });
+        });
+    }
+}
+
+function renderFvCalendarAgenda() {
+    const list = document.getElementById('fv-cal-agenda-list');
+    if (!list) return;
+
+    if (!calendarState.loaded) {
+        list.innerHTML = '<div class="loading"><span class="spinner"></span> Cargando agenda...</div>';
+        return;
+    }
+
+    const sorted = [...calendarState.events].sort((a, b) =>
+        String(a.fecha_hora).localeCompare(String(b.fecha_hora))
+    );
+
+    if (sorted.length === 0) {
+        list.innerHTML = '<div class="cal-no-events"><p>No hay actividades agendadas.</p></div>';
+        return;
+    }
+
+    const byDate = {};
+    const dateOrder = [];
+    sorted.forEach(ev => {
+        const dk = getLocalDateKey(ev.fecha_hora);
+        if (!byDate[dk]) { byDate[dk] = []; dateOrder.push(dk); }
+        byDate[dk].push(ev);
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    let html = '';
+
+    dateOrder.forEach(dk => {
+        const dayEvents = byDate[dk];
+        const isToday = dk === today;
+        const dateLabel = formatAgendaDate(dk);
+
+        const eventsHtml = dayEvents.map(ev => {
+            const curso = ev._curso;
+            const instructor = ev._instructor;
+            const courseName = curso
+                ? (curso.tema ? `${curso.nombre} — ${curso.tema}` : curso.nombre)
+                : `Curso ${ev.id_curso}`;
+            const instructorName = instructor ? instructor.nombre : `Instructor ${ev.id_instructor}`;
+            const time = getLocalTimeHHMM(ev.fecha_hora);
+            const isActive = ev.activo !== false && ev.activo !== 0 && ev.activo !== '0';
+            const inactiveClass = isActive ? '' : ' inactive';
+            return `<div class="cal-agenda-event${inactiveClass}" data-event-date="${dk}" data-curso-id="${ev.id_curso}">
+                <div class="cal-agenda-time">${time}</div>
+                <div class="cal-agenda-event-info">
+                    <div class="cal-agenda-event-name">${courseName}</div>
+                    <div class="cal-agenda-event-meta">${instructorName}${isActive ? '' : ' <span class="cal-badge-inactive">Inactivo</span>'}</div>
+                </div>
+            </div>`;
+        }).join('');
+
+        html += `<div class="cal-agenda-day">
+            <div class="cal-agenda-day-header${isToday ? ' today-header' : ''}">${dateLabel}${isToday ? ' — Hoy' : ''}</div>
+            ${eventsHtml}
+        </div>`;
+    });
+
+    list.innerHTML = html;
+
+    list.querySelectorAll('.cal-agenda-event').forEach(el => {
+        el.addEventListener('click', () => {
+            showCalendarEventDetail(el.dataset.eventDate, el.dataset.cursoId);
+        });
+    });
+}
+
+function switchFvCalendarView(view) {
+    fvCalState.view = view;
+
+    document.querySelectorAll('.fv-calendar-view-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.fvCalView === view);
+    });
+
+    const monthView = document.getElementById('fv-calendar-month-view');
+    const agendaView = document.getElementById('fv-calendar-agenda-view');
+
+    if (view === 'month') {
+        monthView.style.display = '';
+        agendaView.style.display = 'none';
+        renderFvCalendarMonth();
+    } else {
+        monthView.style.display = 'none';
+        agendaView.style.display = 'block';
+        renderFvCalendarAgenda();
+    }
+}
+

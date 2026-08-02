@@ -40,6 +40,7 @@
         <nav class="navbar" id="main-navbar" hidden>
             <div class="nav-content">
                 <button class="nav-btn active" data-section="dashboard">Dashboard</button>
+                <button class="nav-btn" data-section="calendario">Calendario</button>
                 <button class="nav-btn" data-section="tables">Tablas</button>
                 <button class="nav-btn" data-section="migrate">Migraciones</button>
                 <button class="nav-btn" data-section="settings">Configuración</button>
@@ -92,6 +93,42 @@
                             <button class="btn btn-info" id="view-tables-btn">Ver Tablas</button>
                             <button class="btn btn-warning" id="run-migrate-btn">Ejecutar Migraciones</button>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Calendario Section -->
+            <section id="calendario-section" class="section">
+                <div class="section-header">
+                    <h2>📅 Calendario de la Escuela</h2>
+                    <div class="calendar-header-actions">
+                        <div class="calendar-view-switcher">
+                            <button class="calendar-view-btn active" data-cal-view="month">Mes</button>
+                            <button class="calendar-view-btn" data-cal-view="agenda">Agenda</button>
+                        </div>
+                        <button class="btn btn-secondary btn-sm" id="reload-calendar-btn">↺ Recargar</button>
+                        <button class="btn btn-primary" id="add-event-btn" style="display:none;">+ Agregar Actividad</button>
+                    </div>
+                </div>
+
+                <div id="calendar-month-view">
+                    <div class="calendar-month-nav">
+                        <button class="btn btn-secondary btn-sm" id="cal-prev-btn">&#8249;</button>
+                        <span id="cal-month-title" class="cal-month-title">—</span>
+                        <button class="btn btn-secondary btn-sm" id="cal-next-btn">&#8250;</button>
+                        <button class="btn btn-secondary btn-sm" id="cal-today-btn">Hoy</button>
+                    </div>
+                    <div class="cal-grid-container">
+                        <div class="cal-grid" id="cal-grid">
+                            <div class="cal-loading-placeholder" style="grid-column: 1/-1; padding: 40px; text-align: center; color: var(--gray-500);">
+                                Navega a esta sección para cargar el calendario.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="calendar-agenda-view" style="display:none;">
+                    <div class="cal-agenda-list" id="cal-agenda-list">
                     </div>
                 </div>
             </section>
@@ -260,6 +297,7 @@
                 <button class="final-tab-btn" data-tab="alumnos">Alumnos</button>
                 <button class="final-tab-btn" data-tab="instructores">Instructores</button>
                 <button class="final-tab-btn" data-tab="estilos">Estilos</button>
+                <button class="final-tab-btn" data-tab="calendario">📅 Calendario</button>
             </nav>
 
             <div class="final-tabs-content">
@@ -337,6 +375,38 @@
                         </div>
                         <div class="final-tab-table" id="final-table-estilos">
                             <div class="loading"><span class="spinner"></span> Cargando...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="final-tab-panel" id="final-tab-calendario">
+                    <div class="final-tab-view fv-calendar-view">
+                        <div class="final-tab-toolbar fv-cal-toolbar">
+                            <h3>Calendario de la Escuela</h3>
+                            <div class="fv-cal-toolbar-actions">
+                                <div class="calendar-view-switcher">
+                                    <button class="fv-calendar-view-btn active" data-fv-cal-view="month">Mes</button>
+                                    <button class="fv-calendar-view-btn" data-fv-cal-view="agenda">Agenda</button>
+                                </div>
+                                <button class="btn btn-secondary btn-sm" id="fv-reload-calendar-btn">↺ Recargar</button>
+                                <button class="btn btn-primary" id="fv-add-event-btn" style="display:none;">+ Agregar Actividad</button>
+                            </div>
+                        </div>
+
+                        <div id="fv-calendar-month-view">
+                            <div class="calendar-month-nav" style="margin-top:12px;">
+                                <button class="btn btn-secondary btn-sm" id="fv-cal-prev-btn">&#8249;</button>
+                                <span id="fv-cal-month-title" class="cal-month-title">—</span>
+                                <button class="btn btn-secondary btn-sm" id="fv-cal-next-btn">&#8250;</button>
+                                <button class="btn btn-secondary btn-sm" id="fv-cal-today-btn">Hoy</button>
+                            </div>
+                            <div class="cal-grid-container">
+                                <div class="cal-grid" id="fv-cal-grid"></div>
+                            </div>
+                        </div>
+
+                        <div id="fv-calendar-agenda-view" style="display:none;">
+                            <div class="cal-agenda-list" id="fv-cal-agenda-list"></div>
                         </div>
                     </div>
                 </div>
@@ -553,6 +623,131 @@
                 <button class="btn btn-success" id="grade-save-forms-btn" type="button" style="display: none;">Guardar formas</button>
                 <button class="btn btn-secondary" id="grade-cancel-forms-btn" type="button" style="display: none;">Cancelar</button>
                 <button class="btn btn-secondary" id="grade-close-btn" type="button">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de detalle de evento de calendario -->
+    <div class="cal-modal" id="cal-event-detail-modal" style="display:none;">
+        <div class="cal-modal-content">
+            <div class="cal-modal-header">
+                <h3 id="cal-detail-title">Detalle del evento</h3>
+                <button class="cal-modal-close" id="cal-detail-close-x" type="button">✕</button>
+            </div>
+            <div class="cal-modal-body" id="cal-detail-body"></div>
+            <div class="cal-modal-footer" style="justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn btn-success btn-sm" id="cal-register-btn" style="display:none;">Confirmar asistencia</button>
+                    <button class="btn btn-warning btn-sm" id="cal-unregister-btn" style="display:none;">Cancelar asistencia</button>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-warning btn-sm" id="cal-detail-edit-btn" style="display:none;">Editar</button>
+                    <button class="btn btn-danger btn-sm" id="cal-detail-delete-btn" style="display:none;">Eliminar</button>
+                    <button class="btn btn-secondary" id="cal-detail-close-btn">Cerrar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para agregar/editar actividad de calendario (admin) -->
+    <div class="cal-modal" id="cal-add-event-modal" style="display:none;">
+        <div class="cal-modal-content">
+            <div class="cal-modal-header">
+                <h3 id="cal-add-event-title">Agregar Actividad</h3>
+                <button class="cal-modal-close" id="cal-add-close-x" type="button">✕</button>
+            </div>
+            <div class="cal-modal-body">
+                <form id="cal-add-event-form">
+                    <div class="form-group">
+                        <label for="cal-event-curso">Curso <span class="required-indicator">*</span></label>
+                        <select id="cal-event-curso" class="form-input" required>
+                            <option value="">Selecciona un curso</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Instructores <span class="required-indicator">*</span></label>
+                        <div id="cal-instructores-list" class="cal-instructor-checkboxes"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="cal-event-fecha">Fecha y hora <span class="required-indicator">*</span></label>
+                        <input type="datetime-local" id="cal-event-fecha" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="cal-event-activo" class="form-checkbox" checked>
+                            Activo
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label>Recurrencia</label>
+                        <div class="cal-recurrence-group">
+                            <label class="checkbox-label">
+                                <input type="radio" name="cal-recurrence" value="none" checked> Única vez
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="radio" name="cal-recurrence" value="weekly"> Semanal (clase regular)
+                            </label>
+                        </div>
+                    </div>
+                    <div id="cal-weekly-options" class="cal-weekly-options" style="display:none;">
+                        <div class="form-group">
+                            <label>Días de la semana</label>
+                            <div class="cal-weekdays">
+                                <label class="checkbox-label"><input type="checkbox" class="cal-wday" value="0"> Dom</label>
+                                <label class="checkbox-label"><input type="checkbox" class="cal-wday" value="1"> Lun</label>
+                                <label class="checkbox-label"><input type="checkbox" class="cal-wday" value="2"> Mar</label>
+                                <label class="checkbox-label"><input type="checkbox" class="cal-wday" value="3"> Mié</label>
+                                <label class="checkbox-label"><input type="checkbox" class="cal-wday" value="4"> Jue</label>
+                                <label class="checkbox-label"><input type="checkbox" class="cal-wday" value="5"> Vie</label>
+                                <label class="checkbox-label"><input type="checkbox" class="cal-wday" value="6"> Sáb</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="cal-rec-weeks">Número de semanas a programar</label>
+                            <input type="number" id="cal-rec-weeks" class="form-input" value="8" min="1" max="52">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="cal-modal-footer">
+                <button class="btn btn-secondary" id="cal-add-cancel-btn">Cancelar</button>
+                <button class="btn btn-primary" id="cal-add-save-btn">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal confirmación registro en serie de calendario -->
+    <div class="cal-modal" id="cal-register-series-modal" style="display:none;">
+        <div class="cal-modal-content" style="max-width:420px;">
+            <div class="cal-modal-header">
+                <h3>Confirmar asistencia</h3>
+                <button class="cal-modal-close" id="cal-reg-series-close-x" type="button">✕</button>
+            </div>
+            <div class="cal-modal-body" id="cal-reg-series-body"></div>
+            <div class="cal-modal-footer" style="justify-content:space-between;">
+                <button class="btn btn-secondary" id="cal-reg-series-cancel-btn">Cancelar</button>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-secondary" id="cal-reg-single-btn">Solo este día</button>
+                    <button class="btn btn-success" id="cal-reg-all-btn">Toda la serie</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal confirmación borrar evento/serie de calendario -->
+    <div class="cal-modal" id="cal-delete-series-modal" style="display:none;">
+        <div class="cal-modal-content" style="max-width:420px;">
+            <div class="cal-modal-header">
+                <h3>Eliminar actividad</h3>
+                <button class="cal-modal-close" id="cal-delete-series-close-x" type="button">✕</button>
+            </div>
+            <div class="cal-modal-body" id="cal-delete-series-body"></div>
+            <div class="cal-modal-footer" style="justify-content:space-between;">
+                <button class="btn btn-secondary" id="cal-delete-series-cancel-btn">Cancelar</button>
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-warning" id="cal-delete-single-btn">Solo este evento</button>
+                    <button class="btn btn-danger" id="cal-delete-series-btn">Eliminar serie completa</button>
+                </div>
             </div>
         </div>
     </div>
