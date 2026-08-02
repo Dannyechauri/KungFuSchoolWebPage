@@ -22,7 +22,7 @@ export function ZodiacRibbon() {
   const loopItems = [...zodiacItems, ...zodiacItems];
 
   return (
-    <section className="zodiac-ribbon" aria-label="Carrusel decorativo del zodiaco chino">
+    <section className="zodiac-ribbon" aria-hidden="true">
       <div className="zodiac-track">
         {loopItems.map((item, index) => (
           <div className="zodiac-item" key={`${item.name}-${index}`}>

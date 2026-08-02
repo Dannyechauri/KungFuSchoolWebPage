@@ -286,11 +286,15 @@ label {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 20px;
-  padding: 16px;
+  padding: 14px;
   color: #d8c7b6;
-  font-size: 0.95rem;
-  line-height: 1.5;
+  font-size: 0.9rem;
+  line-height: 1.45;
   background: rgba(255, 255, 255, 0.06);
+}
+
+.sidebar-note p {
+  margin: 10px 0 12px;
 }
 
 .zodiac-ribbon {
@@ -298,10 +302,10 @@ label {
   overflow: hidden;
   max-width: 100%;
   min-width: 0;
-  margin: 0 0 14px;
+  margin: 0 0 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 8px 0;
+  border-radius: 14px;
+  padding: 6px 0;
   background: rgba(255, 255, 255, 0.06);
 }
 
@@ -311,7 +315,7 @@ label {
   z-index: 1;
   top: 0;
   bottom: 0;
-  width: 34px;
+  width: 28px;
   content: "";
   pointer-events: none;
 }
@@ -334,17 +338,17 @@ label {
 
 .zodiac-item {
   display: grid;
-  flex: 0 0 44px;
+  flex: 0 0 38px;
   place-items: center;
   gap: 2px;
   color: #f7dfac;
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 900;
 }
 
 .zodiac-item img {
-  width: 27px;
-  height: 27px;
+  width: 23px;
+  height: 23px;
   object-fit: contain;
   filter: sepia(0.25) saturate(0.9);
   opacity: 0.9;

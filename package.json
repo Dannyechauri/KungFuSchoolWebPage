@@ -1,7 +1,7 @@
 {
   "name": "@kungfu/master-dashboard",
   "version": "0.2.0",
-  "description": "Panel React para uso interno de maestros y administradores del Instituto de Wu-shu de Barcelona",
+  "description": "Panel React para uso interno de maestros, instructores y administradores del Instituto de Wu-shu de Barcelona",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 8000",

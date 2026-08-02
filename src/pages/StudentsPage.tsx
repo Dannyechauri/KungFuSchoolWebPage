@@ -17,8 +17,8 @@ export function StudentsPage() {
   const { isLoading, students, grades, forms } = useSchoolData();
 
   /**
-   * Estos estados son puramente de pantalla: qué busca el maestro y qué filtros
-   * tiene activos. No viven en backend porque son una preferencia momentánea.
+   * Estos estados son puramente de pantalla: qué busca quien usa el panel y qué
+   * filtros tiene activos. No viven en backend porque son una preferencia momentánea.
    */
   const [searchTerm, setSearchTerm] = useState('');
   const [gradeFilter, setGradeFilter] = useState('all');

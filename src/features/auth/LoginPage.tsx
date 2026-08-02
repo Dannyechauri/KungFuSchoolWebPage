@@ -21,7 +21,7 @@ export function LoginPage() {
           <img src="/logo-instituto-wushu.png" alt="Escudo del Instituto de Wu-shu de Barcelona" />
           <div>
             <p className="eyebrow">Instituto de Wu-shu de Barcelona</p>
-            <h1>Panel del maestro</h1>
+            <h1>Panel interno</h1>
           </div>
         </div>
 

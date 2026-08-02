@@ -84,7 +84,7 @@ export function DashboardPage() {
 
         <article className="panel-card">
           <div className="panel-card-header">
-            <h2>Atención del maestro</h2>
+            <h2>Puntos a revisar</h2>
             <Link to="/alumnos">Ver alumnos</Link>
           </div>
 
