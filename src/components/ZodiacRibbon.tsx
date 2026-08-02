@@ -11,7 +11,7 @@ const zodiacItems = [
   { name: 'Gallo', character: '雞', image: '/zodiac/rooster.svg' },
   { name: 'Perro', character: '狗', image: '/zodiac/dog.png' },
   { name: 'Jabalí', character: '豬', image: '/zodiac/boar.png' },
-  { name: 'Pakua', character: '卦', image: '/zodiac/pakua.svg' },
+  { name: 'Pakua', character: '八卦', image: '/zodiac/pakua.svg' },
 ];
 
 export function ZodiacRibbon() {

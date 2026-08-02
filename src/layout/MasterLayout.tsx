@@ -3,11 +3,16 @@ import { ZodiacRibbon } from '../components/ZodiacRibbon';
 import { useAuth } from '../features/auth/AuthProvider';
 
 const navigation = [
-  { to: '/', label: 'Inicio', icon: '院' },
-  { to: '/alumnos', label: 'Alumnos', icon: '人' },
+  /*
+    Los caracteres funcionan como iconos culturales, no como una traducción
+    literal perfecta del menú:
+    館 = escuela/sala, 徒 = discípulo/alumno, 日 = día, 拳 = puño/arte marcial, 師 = maestro.
+  */
+  { to: '/', label: 'Inicio', icon: '館' },
+  { to: '/alumnos', label: 'Alumnos', icon: '徒' },
   { to: '/calendario', label: 'Calendario', icon: '日' },
   { to: '/conocimiento', label: 'Conocimiento', icon: '拳' },
-  { to: '/equipo', label: 'Equipo', icon: '师' },
+  { to: '/equipo', label: 'Equipo', icon: '師' },
 ];
 
 export function MasterLayout() {
@@ -31,7 +36,9 @@ export function MasterLayout() {
               Así evitamos estado manual para marcar el menú seleccionado.
             */
             <NavLink key={item.to} to={item.to} end={item.to === '/'}>
-              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-icon" aria-hidden="true">
+                {item.icon}
+              </span>
               {item.label}
             </NavLink>
           ))}
@@ -39,13 +46,10 @@ export function MasterLayout() {
 
         <div className="sidebar-note">
           <ZodiacRibbon />
-          <p>
-            Panel pensado para el trabajo diario de maestros, instructores y administradores: pocas secciones,
-            acciones claras.
-          </p>
+          <p className="sidebar-note-title">Panel de administradores</p>
           {isAdmin ? (
-            <a href="/legacy-admin/" target="_blank" rel="noreferrer">
-              Herramienta técnica original
+            <a className="sidebar-tool-link" href="/legacy-admin/" target="_blank" rel="noreferrer">
+              Abrir herramienta técnica original
             </a>
           ) : null}
         </div>
