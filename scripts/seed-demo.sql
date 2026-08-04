@@ -1,6 +1,8 @@
 -- Datos locales de demostración para el panel React.
 -- Este archivo se ejecuta desde scripts/dev-all.mjs después de que Flyway haya creado el esquema.
 
+SET client_encoding = 'UTF8';
+
 DO $$
 BEGIN
     IF current_database() !~* '(demo|poc|local|test)' THEN

@@ -386,6 +386,7 @@ async function waitForHealth(url, label) {
 function postgresEnv() {
   return {
     ...process.env,
+    PGCLIENTENCODING: 'UTF8',
     PGPASSWORD: config.dbPassword,
   };
 }

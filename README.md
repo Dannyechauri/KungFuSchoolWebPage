@@ -139,6 +139,7 @@ Puedes pasarlas por terminal o guardarlas en `.env.local`.
 
 ```text
 VITE_API_URL=http://127.0.0.1:8080
+PGCLIENTENCODING=UTF8
 DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=kungfu_school_react_demo
@@ -147,6 +148,8 @@ DB_PASSWORD=tu_password_local
 ```
 
 Recomendación: usa una base demo nueva para no tocar datos personales. El seed se protege y solo se ejecuta si la base contiene `demo`, `poc`, `local` o `test` en el nombre.
+
+En Windows el script fuerza `PGCLIENTENCODING=UTF8` para que `psql` lea correctamente los acentos del archivo demo.
 
 ## Scripts principales
 
