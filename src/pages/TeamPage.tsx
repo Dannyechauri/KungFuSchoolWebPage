@@ -58,7 +58,7 @@ export function TeamPage() {
       <PageHeader
         eyebrow="Equipo"
         title="Instructores y estilos"
-        description="Una vista sencilla para saber quién enseña qué y qué actividad tiene asignada."
+        description="Instructores, estilos asignados y próximas actividades."
         actions={
           isAdmin ? (
             <button className="primary-action" type="button" onClick={() => setIsCreateOpen(true)}>

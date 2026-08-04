@@ -45,7 +45,7 @@ export function DashboardPage() {
       <PageHeader
         eyebrow="Vista de trabajo"
         title="Resumen de la escuela"
-        description="Lo importante al abrir el panel: alumnos activos, próximas clases y puntos que merecen revisión."
+        description="Alumnos activos, próximas actividades, programa técnico y avisos."
       />
 
       <div className="stats-grid">

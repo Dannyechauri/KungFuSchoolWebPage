@@ -82,7 +82,7 @@ export function CalendarPage() {
       <PageHeader
         eyebrow="Calendario"
         title="Agenda de clases y actividades"
-        description="Vista limpia para saber qué toca, cuándo y con qué instructor."
+        description="Actividades agendadas por fecha, curso e instructor."
         actions={
           isAdmin ? (
             <button className="primary-action" type="button" onClick={() => setIsCreateOpen(true)}>

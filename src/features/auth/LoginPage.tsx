@@ -25,10 +25,6 @@ export function LoginPage() {
           </div>
         </div>
 
-        <p className="login-intro">
-          Una entrada sencilla para revisar alumnos, calendario y conocimiento de la escuela.
-        </p>
-
         <form className="login-form" onSubmit={handleSubmit}>
           <label>
             Correo electrónico

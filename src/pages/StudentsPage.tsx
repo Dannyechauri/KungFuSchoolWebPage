@@ -75,7 +75,7 @@ export function StudentsPage() {
       <PageHeader
         eyebrow="Alumnos"
         title="Alumnos de la escuela"
-        description="Busca rápido, filtra por grado o forma y entra en una ficha sin tener que ver tablas técnicas."
+        description="Búsqueda, filtros por grado y forma, alta rápida y acceso a ficha."
         actions={
           isAdmin ? (
             <button className="primary-action" type="button" onClick={() => setIsCreateOpen(true)}>

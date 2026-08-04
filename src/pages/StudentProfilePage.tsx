@@ -92,7 +92,7 @@ export function StudentProfilePage() {
       <PageHeader
         eyebrow="Ficha de alumno"
         title={student.nombre}
-        description={`${student.grade?.nombre ?? 'Sin grado'} · matrícula ${student.numero_matricula}`}
+        description={`Grado: ${student.grade?.nombre ?? 'Sin grado'}. Matrícula: ${student.numero_matricula}.`}
         actions={<Link className="secondary-action" to="/alumnos">← Volver</Link>}
       />
 

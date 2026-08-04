@@ -58,7 +58,7 @@ export function KnowledgePage() {
       <PageHeader
         eyebrow="Conocimiento"
         title="Estructura de grados, estilos y formas"
-        description="Aquí se ordena el mapa técnico de la escuela para que luego alumnos y calendario tengan sentido."
+        description="Catálogo técnico: estilos, formas, grados, requisitos y cursos."
       />
 
       <div className="knowledge-grid">

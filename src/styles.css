@@ -126,12 +126,6 @@ label {
   text-transform: uppercase;
 }
 
-.login-intro {
-  color: var(--muted);
-  font-size: 1.08rem;
-  line-height: 1.6;
-}
-
 .login-form,
 .stacked-form {
   display: grid;
@@ -426,16 +420,66 @@ label {
 }
 
 .page-header h1 {
+  margin: 0;
   font-size: clamp(2rem, 4vw, 3.5rem);
   color: var(--ink);
 }
 
-.page-header p {
-  max-width: 780px;
-  margin: 10px 0 0;
+.page-title-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.page-info {
+  position: relative;
+}
+
+.page-info summary {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--red-dark);
+  background: rgba(255, 250, 242, 0.92);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 950;
+  line-height: 1;
+  list-style: none;
+}
+
+.page-info summary::-webkit-details-marker {
+  display: none;
+}
+
+.page-info[open] summary,
+.page-info summary:hover {
+  color: #fff;
+  background: var(--red);
+  border-color: var(--red);
+}
+
+.page-info p {
+  position: absolute;
+  z-index: 15;
+  top: 36px;
+  left: 0;
+  width: min(360px, calc(100vw - 80px));
+  margin: 0;
+  border: 1px solid rgba(155, 31, 34, 0.12);
+  border-radius: 16px;
+  padding: 12px 14px;
   color: var(--muted);
-  font-size: 1.1rem;
-  line-height: 1.55;
+  background: rgba(255, 250, 242, 0.98);
+  box-shadow: var(--shadow);
+  font-size: 0.94rem;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .page-actions {
