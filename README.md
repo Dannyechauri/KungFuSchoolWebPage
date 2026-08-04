@@ -19,6 +19,8 @@ Ese comando intenta hacer todo lo necesario para una prueba local:
 - prepara una base demo llamada `kungfu_school_react_demo`;
 - arranca el backend en `http://127.0.0.1:8080`;
 - carga datos falsos de alumnos, grados, formas, instructores y calendario;
+- muestra conteos de la base demo para confirmar que se ha llenado;
+- comprueba que el backend acepta el login demo;
 - arranca el front React en `http://127.0.0.1:8000`.
 
 Credenciales demo:
@@ -168,6 +170,27 @@ Si quieres arrancar sin recargar datos demo:
 ```bash
 npm run dev:all -- --no-seed
 ```
+
+## Problemas habituales
+
+### El script termina, pero la web o pgAdmin parecen no tener datos
+
+Al cargar datos, la salida debería incluir algo parecido a:
+
+```text
+kungfu_school_react_demo: administradores=1, alumnos=36, instructores=7, formas=40, cursos_agendados=16, inscripciones=128
+```
+
+Si esos conteos salen bien pero la web aparece vacía, normalmente hay un backend antiguo corriendo en `http://127.0.0.1:8080` conectado a otra base de datos. Para arreglarlo:
+
+1. Para el backend que esté usando el puerto `8080`.
+2. Vuelve a ejecutar:
+
+```bash
+npm run dev:all
+```
+
+El script también prueba el login demo contra el backend; si el backend no ve la base sembrada, ahora falla con un mensaje explícito.
 
 ## Secciones React actuales
 

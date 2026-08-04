@@ -33,6 +33,11 @@ const config = {
   dbPassword: envValue('DB_PASSWORD', ''),
 };
 
+const demoLogin = {
+  email: 'admin.demo@iwushu.local',
+  password: 'password',
+};
+
 const managedProcesses = [];
 let backendStartedByScript = false;
 
@@ -68,12 +73,17 @@ async function main() {
 
   if (shouldSeed) {
     seedDemoDatabase();
+    printDemoCounts();
   }
 
   if (seedOnly) {
     console.log('\n✅ Base demo preparada.');
     stopManagedProcesses();
     return;
+  }
+
+  if (shouldSeed) {
+    await verifyBackendSeesDemoData(backendAlreadyRunning);
   }
 
   const frontendAlreadyRunning = await isHealthy(config.frontUrl);
@@ -86,7 +96,7 @@ async function main() {
   console.log('\nListo para probar:');
   console.log(`- Panel React: ${config.frontUrl}`);
   console.log(`- Backend: ${config.apiUrl}`);
-  console.log('- Login demo: admin.demo@iwushu.local / password');
+  console.log(`- Login demo: ${demoLogin.email} / ${demoLogin.password}`);
   console.log('\nPulsa Ctrl+C para apagar los procesos arrancados por este script.\n');
 
   await waitForever();
@@ -257,6 +267,73 @@ function seedDemoDatabase() {
     { env: postgresEnv() },
   );
   console.log('✅ Datos demo cargados.');
+}
+
+function printDemoCounts() {
+  const result = runChecked(
+    'psql',
+    [
+      '-h',
+      config.dbHost,
+      '-p',
+      config.dbPort,
+      '-U',
+      config.dbUser,
+      '-d',
+      config.dbName,
+      '-Atc',
+      [
+        "SELECT 'administradores=' || COUNT(*) FROM administradores",
+        "UNION ALL SELECT 'alumnos=' || COUNT(*) FROM alumnos",
+        "UNION ALL SELECT 'instructores=' || COUNT(*) FROM instructores",
+        "UNION ALL SELECT 'formas=' || COUNT(*) FROM formas",
+        "UNION ALL SELECT 'cursos_agendados=' || COUNT(*) FROM cursos_agendados",
+        "UNION ALL SELECT 'inscripciones=' || COUNT(*) FROM inscripciones",
+      ].join(' '),
+    ],
+    { env: postgresEnv(), stdio: 'pipe' },
+  );
+
+  const counts = result.stdout
+    .trim()
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .join(', ');
+
+  console.log(`📊 ${config.dbName}: ${counts}`);
+}
+
+async function verifyBackendSeesDemoData(backendAlreadyRunning) {
+  const loginUrl = `${config.apiUrl}/api/auth/login`;
+
+  try {
+    const response = await fetch(loginUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(demoLogin),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data?.authenticated === true) {
+        console.log('✅ El backend ve la base demo y acepta el login de prueba.');
+        return;
+      }
+    }
+  } catch {
+    // El mensaje final de abajo explica la causa probable y el siguiente paso.
+  }
+
+  const runningHint = backendAlreadyRunning
+    ? 'Ya había un backend corriendo en el puerto 8080 antes de ejecutar este script. Probablemente está conectado a otra base de datos. Páralo y vuelve a ejecutar npm run dev:all.'
+    : 'El backend arrancó, pero no ve el usuario demo. Revisa las variables DB_* y la salida de Flyway/psql.';
+
+  throw new Error(
+    [
+      `La base ${config.dbName} se ha llenado, pero el backend en ${config.apiUrl} no autentica ${demoLogin.email}.`,
+      runningHint,
+    ].join(' '),
+  );
 }
 
 function startFrontend() {
