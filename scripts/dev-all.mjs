@@ -18,7 +18,7 @@ const seedOnly = args.has('--seed-only');
 
 const isWindows = process.platform === 'win32';
 const npmCommand = isWindows ? 'npm.cmd' : 'npm';
-const gradleCommand = isWindows ? 'gradlew.bat' : './gradlew';
+const gradleCommand = isWindows ? '.\\gradlew.bat' : './gradlew';
 
 const fileEnv = readEnvFile(join(frontDir, '.env.local'));
 const defaultDbUser = isWindows ? 'postgres' : os.userInfo().username || 'postgres';
@@ -271,7 +271,8 @@ function startFrontend() {
 }
 
 function spawnManaged(label, command, childArgs, options = {}) {
-  const child = spawn(command, childArgs, {
+  const invocation = getCommandInvocation(command, childArgs);
+  const child = spawn(invocation.command, invocation.args, {
     stdio: 'inherit',
     detached: !isWindows,
     ...options,
@@ -286,11 +287,16 @@ function spawnManaged(label, command, childArgs, options = {}) {
     }
   });
 
+  child.on('error', (error) => {
+    console.error(`\n⚠️  No se pudo arrancar ${label}: ${error.message}`);
+  });
+
   return child;
 }
 
 function runChecked(command, commandArgs, options = {}) {
-  const result = spawnSync(command, commandArgs, {
+  const invocation = getCommandInvocation(command, commandArgs);
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd: options.cwd ?? frontDir,
     env: options.env ?? process.env,
     encoding: 'utf8',
@@ -315,8 +321,38 @@ function runChecked(command, commandArgs, options = {}) {
 }
 
 function commandWorks(command, commandArgs) {
-  const result = spawnSync(command, commandArgs, { stdio: 'ignore' });
+  const invocation = getCommandInvocation(command, commandArgs);
+  const result = spawnSync(invocation.command, invocation.args, { stdio: 'ignore' });
   return !result.error && result.status === 0;
+}
+
+function getCommandInvocation(command, commandArgs) {
+  /**
+   * En Windows los archivos .cmd/.bat no siempre se pueden lanzar directamente
+   * con child_process.spawn/spawnSync. Pasarlos por cmd.exe evita errores crípticos
+   * como `spawn EINVAL`, especialmente con npm.cmd y gradlew.bat.
+   */
+  if (!isWindows || !/\.(cmd|bat)$/i.test(command)) {
+    return { command, args: commandArgs };
+  }
+
+  return {
+    command: process.env.ComSpec || 'cmd.exe',
+    args: ['/d', '/s', '/c', windowsShellLine(command, commandArgs)],
+  };
+}
+
+function windowsShellLine(command, commandArgs) {
+  return [command, ...commandArgs].map(quoteWindowsShellArg).join(' ');
+}
+
+function quoteWindowsShellArg(value) {
+  const text = String(value);
+  if (/^[a-zA-Z0-9_./\\:@=-]+$/.test(text)) {
+    return text;
+  }
+
+  return `"${text.replaceAll('"', '\\"')}"`;
 }
 
 async function isHealthy(url) {
