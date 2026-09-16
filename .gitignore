@@ -1,0 +1,11 @@
+# Dependencias y compilaciones, también en subcarpetas.
+node_modules/
+dist/
+
+# Configuración local; se pueden versionar plantillas sin credenciales.
+.env
+.env.*
+!.env.example
+
+# Archivos de macOS.
+.DS_Store
