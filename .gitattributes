@@ -1,0 +1,6 @@
+# Mismos finales de línea para el código en macOS y Windows.
+* text=auto eol=lf
+
+# Los lanzadores de Windows, si se añaden, usan su formato nativo.
+*.bat text eol=crlf
+*.cmd text eol=crlf

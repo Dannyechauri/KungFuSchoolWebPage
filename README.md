@@ -1,227 +1,132 @@
-# 🥋 Panel de Administración - Escuela de Kung Fu
+# Instituto de Wu-shu de Barcelona
 
-## Descripción
+Aplicación interna para maestros, instructores y administradores. Construiremos sus pantallas paso a paso.
 
-Panel web moderno y responsivo para administrar la base de datos de la Escuela de Kung Fu. Proporciona una interfaz intuitiva para monitorear el estado de la base de datos, visualizar tablas y ejecutar migraciones.
+Por ahora solo existe la base de desarrollo y una pantalla inicial. El front todavía no tiene autenticación ni consume datos del backend, aunque el entorno local ya los prepara para las siguientes pantallas.
 
-## Características
+## Stack
 
-✅ **Dashboard Interactivo**
-- Estado en tiempo real de la base de datos
-- Estadísticas de tablas y migraciones
-- Acciones rápidas
+- React 19 y TypeScript: componentes y tipos.
+- Vite 8: servidor de desarrollo y compilación.
+- React Router 7: navegación del navegador, preparada con `BrowserRouter`.
+- Tailwind CSS 4: estilos mediante clases, integrado con el plugin oficial de Vite.
+- Oxlint: revisión estática del código, incluido en la plantilla oficial de Vite utilizada.
 
-✅ **Gestión de Tablas**
-- Visualizar todas las tablas de la base de datos
-- Información detallada de cada tabla
-- Interfaz responsiva
+React Router se mantiene en la versión 7 elegida para esta base. Actualizar Node no implica actualizar las librerías del front.
 
-✅ **Gestión de Migraciones**
-- Ejecutar migraciones con un clic
-- Ver detalles de migraciones ejecutadas
-- Información de versiones
+## Entorno común para macOS y Windows
 
-✅ **Configuración**
-- Cambiar URL del API backend
-- Configurar actualización automática
-- Ajustar intervalo de actualización
+Las versiones de referencia son **Node.js 24.21.0 LTS** y **npm 11.19.0**. Se registran en `.node-version` y `packageManager` de `package.json`, respectivamente. `engines` admite Node desde 24.21.0 hasta antes de 25, y npm desde 11.19.0 hasta antes de 12.
 
-✅ **Diseño Responsivo**
-- Compatible con escritorio, tablet y móvil
-- Interfaz moderna con gradientes y animaciones
-- Notificaciones toast amigables
+`engines` declara las versiones compatibles y `.npmrc` hace que una instalación con versiones incompatibles se detenga con `EBADENGINE`. `.node-version` y `packageManager` documentan el entorno; no instalan ni seleccionan por sí solos Node o npm.
 
-## Requisitos
+En macOS con Homebrew, instalar `node@24` y seleccionar su carpeta `bin` en el `PATH` de la terminal. En Windows, instalar Node desde su [web oficial](https://nodejs.org/en/download), seleccionando la versión de referencia y la arquitectura del equipo. No se necesitan WSL ni Git Bash para ejecutar el front.
 
-- Navegador web moderno (Chrome, Firefox, Safari, Edge)
-- Acceso al servidor backend de Kung Fu en `http://localhost:8080`
-- JavaScript habilitado
+Después de instalar o cambiar Node, abrir una nueva terminal y verificar:
 
-## Instalación
+```text
+node --version
+npm --version
+```
 
-### Opción 1: Acceso Directo (Recomendado)
+Si la terminal aún muestra la versión anterior, revisar `type -a node npm` en macOS o `where.exe node` y `where.exe npm` en Windows. También puede ser necesario cerrar y volver a abrir el editor para que sus terminales hereden el nuevo entorno.
 
-1. Abre el archivo `index.html` en tu navegador web:
-   ```
-   Abre KungFuSchoolWebPage/index.html
-   ```
+## Arranque del entorno de desarrollo
 
-### Opción 2: Usando un Servidor Local
+Abrir una terminal en `KungFuSchoolWebPage`, la carpeta que contiene este `package.json`. Si se parte del repositorio padre, ejecutar primero `cd KungFuSchoolWebPage`.
 
-Para evitar problemas de CORS, es recomendable servir los archivos localmente:
+Los comandos son los mismos en macOS y Windows:
 
-#### Con Python (3.x):
+```text
+npm ci
+npm run dev
+```
+
+`npm ci` instala las versiones del `package-lock.json` sin actualizarlo. Ejecutarlo en la primera instalación y cuando cambie ese archivo; no hace falta reinstalar en cada arranque. Para añadir o actualizar una dependencia de forma deliberada se usa `npm install` y se revisan los cambios del lockfile.
+
+Cada ordenador debe instalar sus propias dependencias. No copiar `node_modules/` entre macOS y Windows: algunas herramientas contienen binarios distintos para cada plataforma.
+
+`npm run dev` prepara el entorno completo: comprueba que los puertos 8000 y 8080 estén libres, crea si hace falta la base PostgreSQL local `kungfu_school_dev`, arranca el backend, aplica sus migraciones y carga datos de demostración solo la primera vez. Después arranca el front en http://127.0.0.1:8000/.
+
+La base queda en el ordenador entre arranques, también los cambios que se hagan durante las pruebas. El lanzador únicamente acepta una base local y se niega a adoptar una base con ese nombre si no fue creada por él. No borra ni reinicializa datos.
+
+Los datos iniciales incluyen un administrador, tres instructores, cuatro cursos y actividades repartidas entre días recientes y las dos semanas siguientes. La cuenta de demostración es `admin@wushu.test` con contraseña `WushuDemo2026!`; es exclusiva para esta base local y ficticia.
+
+Hace falta instalar una vez PostgreSQL local y Java 21 además de Node. En macOS el usuario por defecto de PostgreSQL es el mismo usuario del sistema; en Windows es normalmente `postgres`. Si ese usuario tiene contraseña, copiar `.env.example` como `.env.dev.local` y completar `DEV_DB_USER` y `DEV_DB_PASSWORD`. Este archivo está ignorado por Git. Se puede indicar `DEV_JAVA_HOME` en ese mismo archivo si Java 21 no está disponible desde la terminal.
+
+Para trabajar solo en la interfaz, sin arrancar PostgreSQL ni el backend:
+
+```text
+npm run dev:front
+```
+
+El puerto es fijo: si está ocupado, el lanzador lo indicará en lugar de elegir otro.
+
+Si PowerShell bloquea `npm.ps1`, usar el lanzador de Windows, sin cambiar las políticas de ejecución:
+
+```powershell
+npm.cmd ci
+npm.cmd run dev
+```
+
+Ante `EBADENGINE`, comprobar las versiones indicadas por el error e instalar el entorno acordado. No omitir la comprobación con `--force`. Si el puerto 8000 está ocupado, cerrar el servidor anterior del proyecto o revisar qué aplicación lo utiliza.
+
+## Criterios de compatibilidad
+
+- Los scripts de npm deben funcionar en ambos sistemas. Evitar comandos exclusivos de Bash o PowerShell; si hace falta automatización adicional, escribirla en Node y comprobarla en ambos sistemas.
+- `.gitattributes` normaliza los archivos de texto a LF y reserva CRLF para posibles lanzadores `.bat` o `.cmd`. No hace falta cambiar la configuración global de Git.
+- Usar exactamente las mismas mayúsculas y minúsculas en los nombres de archivo y sus imports.
+- Las credenciales de PostgreSQL usadas por el lanzador local se guardan en `.env.dev.local`. El `.env.local` del front no configura automáticamente Spring Boot.
+
+## Primeros archivos
+
+El recorrido de arranque es `index.html` → `src/main.tsx` → `src/App.tsx`.
+
+| Archivo | Responsabilidad |
+| --- | --- |
+| `index.html` | Documento HTML con el contenedor `root` y la entrada de JavaScript. |
+| `src/main.tsx` | Monta React en `root` y envuelve la aplicación con `StrictMode` y `BrowserRouter`. |
+| `src/App.tsx` | Componente raíz; por ahora muestra una pantalla mínima. |
+| `src/index.css` | Importa Tailwind. Las clases se usan en `className` de los componentes. |
+| `vite.config.ts` | Activa React y Tailwind y configura el servidor local. |
+| `tsconfig*.json` | Configura TypeScript para la aplicación y las herramientas. |
+| `.oxlintrc.json` | Configura el análisis estático y las reglas de React. |
+| `package.json` | Declara dependencias y comandos. |
+| `package-lock.json` | Fija las versiones instaladas para reproducir la instalación con `npm ci`. |
+| `.node-version` y `.npmrc` | Documentan Node y activan la comprobación de versiones durante la instalación. |
+| `.gitattributes` | Mantiene finales de línea consistentes entre sistemas. |
+
+## Comprobaciones
+
 ```bash
-cd KungFuSchoolWebPage
-python -m http.server 8000
+npm run lint
+npm run build
 ```
 
-Luego accede a: `http://localhost:8000`
+`build` comprueba los tipos y genera `dist/`. Para revisar esa compilación localmente:
 
-#### Con Node.js:
 ```bash
-cd KungFuSchoolWebPage
-npx http-server
+npm run preview
 ```
 
-#### Con Live Server (VS Code):
-1. Instala la extensión "Live Server"
-2. Click derecho en `index.html`
-3. Selecciona "Open with Live Server"
+No hay todavía una suite de tests; se decidirá al construir las funcionalidades.
 
-## Uso
+El entorno se ha comprobado localmente en macOS. La instalación y ejecución en Windows siguen pendientes de validación real.
 
-### 1. Dashboard
-- **Verificar Estado**: Comprueba la conexión y estado de la base de datos
-- **Ver Tablas**: Número total de tablas en la base de datos
-- **Acciones Rápidas**: Botones para navegar a otras secciones
+### Comprobación automática en GitHub
 
-### 2. Tablas
-- Visualiza todas las tablas de la base de datos
-- Cada tabla muestra opciones de información detallada
-- Recarga la lista con el botón "Recargar"
+El workflow `.github/workflows/frontend-checks.yml` pertenece al repositorio web `KungFuSchoolWebPage`. Cuando esté publicado, se ejecutará en cada push y en las propuestas de merge dirigidas a `main`.
 
-### 3. Migraciones
-- Ejecuta las migraciones de base de datos
-- Revisa los detalles de ejecución
-- Información sobre versiones de esquema
+Ejecuta `npm ci`, `npm run lint` y `npm run build` por separado en macOS y Windows. Obtiene Node de `.node-version`, con el npm incluido en esa distribución (Node 24.21.0 incluye npm 11.19.0), y muestra ambas versiones en los registros. `.npmrc` comprueba que el entorno cumple `engines`.
 
-### 4. Configuración
-- **URL del API**: Configura la dirección del servidor backend
-- **Actualización Automática**: Habilita/deshabilita el refresco automático
-- **Intervalo**: Define cada cuántos segundos se actualiza
+Los resultados aparecerán en la pestaña **Actions** del repositorio y en las comprobaciones de la propuesta de merge. Un fallo en un sistema no cancela la comprobación del otro. Este workflow no despliega la aplicación ni hace merges, y no necesita el backend ni una base de datos.
 
-## Configuración del Backend
+Preparar el archivo localmente no ejecuta comprobaciones en GitHub: hace falta publicar los cambios, con autorización explícita para el push. La primera ejecución remota queda pendiente.
 
-La aplicación se conecta al backend en `http://localhost:8080` por defecto. 
+### Primera prueba manual en Windows
 
-### Endpoints Utilizados
+Cuando terminemos la primera página, la probaremos en el PC de sobremesa Windows: instalación con `npm ci`, arranque con `npm run dev`, carga y recarga en el navegador, y las interacciones que tenga esa página. Que la compilación automática pase no sustituye esta prueba de uso.
 
-```
-GET  /api/database/health     - Estado de la base de datos
-GET  /api/database/tables     - Listar tablas
-POST /api/database/migrate    - Ejecutar migraciones
-```
+`npm run dev` y `npm run preview` son herramientas de desarrollo y revisión. El paquete de ejecución para el ordenador de la escuela se preparará en otra fase.
 
-Si tu backend está en otra ubicación, cambia la URL en la sección **Configuración**.
-
-## Configuración de CORS
-
-Si experimentas errores de CORS, asegúrate de que tu backend Spring Boot tenga CORS habilitado:
-
-```kotlin
-@Configuration
-class CorsConfig {
-    @Bean
-    fun corsConfigurationSource(): CorsConfigurationSource {
-        val configuration = CorsConfiguration()
-        configuration.allowedOrigins = listOf("http://localhost:8000", "http://localhost:3000")
-        configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
-        configuration.allowedHeaders = listOf("*")
-        configuration.allowCredentials = true
-        
-        val source = UrlBasedCorsConfigurationSource()
-        source.registerCorsConfiguration("/api/**", configuration)
-        return source
-    }
-}
-```
-
-## Almacenamiento Local
-
-La aplicación utiliza `localStorage` del navegador para guardar:
-- URL del API
-- Preferencias de actualización automática
-- Intervalo de actualización
-
-Estos datos persisten entre sesiones.
-
-## Características Avanzadas
-
-### Notificaciones Toast
-- **Información**: Mensajes de estado general
-- **Éxito**: Operaciones completadas correctamente
-- **Error**: Problemas detectados
-- Se cierran automáticamente después de 4 segundos
-
-### Auto-Actualización
-- Actualiza automáticamente cuando estás en el Dashboard
-- Intervalo configurable (5-300 segundos)
-- Pausa cuando cambias de sección
-
-### Manejo de Errores
-- Mensajes de error claros y descriptivos
-- Validación de entradas
-- Confirmación para operaciones críticas
-
-## Estructura de Archivos
-
-```
-KungFuSchoolWebPage/
-├── index.html          # Página principal HTML
-├── styles.css          # Estilos CSS
-├── app.js              # Lógica JavaScript
-├── README.md           # Esta documentación
-└── package.json        # Configuración de proyecto (opcional)
-```
-
-## Desarrollo
-
-### Personalización de Estilos
-
-Edita `styles.css` para personalizar los colores y estilos:
-
-```css
-:root {
-    --primary-color: #d32f2f;      /* Rojo primario */
-    --secondary-color: #1976d2;    /* Azul secundario */
-    --success-color: #388e3c;      /* Verde de éxito */
-}
-```
-
-### Agregar Nuevos Endpoints
-
-En `app.js`, agrega nuevas funciones:
-
-```javascript
-async function newFeature() {
-    try {
-        const data = await apiCall('/api/database/new-endpoint');
-        // Procesa los datos
-    } catch (error) {
-        showToast('Error', 'error');
-    }
-}
-```
-
-## Resolución de Problemas
-
-### El panel no se conecta al backend
-1. Verifica que el servidor backend está corriendo en `http://localhost:8080`
-2. En Configuración, cambia la URL del API si es necesario
-3. Revisa la consola del navegador (F12 → Consola) para errores
-
-### Error de CORS
-- Asegúrate de que el backend permite CORS
-- Intenta acceder desde un servidor local (http://localhost:xxxx)
-- Consulta la sección de Configuración de CORS arriba
-
-### Las tablas no cargan
-- Verifica que la base de datos está correctamente inicializada
-- Ejecuta las migraciones desde la sección de Migraciones
-- Revisa los logs del backend para más información
-
-## Navegadores Soportados
-
-- ✅ Chrome 90+
-- ✅ Firefox 88+
-- ✅ Safari 14+
-- ✅ Edge 90+
-
-## Licencia
-
-© 2026 Escuela de Kung Fu. Todos los derechos reservados.
-
-## Soporte
-
-Para reportar problemas o sugerencias, contacta al administrador del sistema.
+`node_modules/`, `dist/` y la configuración local `.env.local` están ignorados por Git. `npm run dev` entrega al backend las credenciales mediante variables privadas. Nunca deben añadirse secretos a variables `VITE_*`, porque son accesibles desde el navegador.
