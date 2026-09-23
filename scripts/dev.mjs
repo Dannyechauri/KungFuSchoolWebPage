@@ -13,7 +13,7 @@ import { createServer as createViteServer } from 'vite';
 const { Client } = pg;
 const DATABASE_NAME = 'kungfu_school_dev';
 const DATABASE_COMMENT = 'instituto-wushu:development:v1';
-const SEED_VERSION = 'calendar-demo-v1';
+const SEED_VERSION = 'school-data-v2';
 const FRONT_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BACKEND_DIRECTORY = path.resolve(FRONT_DIRECTORY, '../KungFuBackendService/backend-service');
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
@@ -81,6 +81,21 @@ async function prepareDevelopmentDatabase(configuration) {
     }
     if (result.rows[0].description !== DATABASE_COMMENT) throw new Error(`La base ${DATABASE_NAME} ya existe pero no pertenece a este entorno de desarrollo. No se ha modificado.`);
     console.log(`Base de datos de desarrollo encontrada: ${DATABASE_NAME}`);
+  });
+}
+
+
+async function resetDevelopmentDatabase(configuration) {
+  await withClient(configuration, 'postgres', async (client) => {
+    const result = await client.query('SELECT description FROM pg_database LEFT JOIN pg_shdescription ON objoid = pg_database.oid WHERE datname = $1', [DATABASE_NAME]);
+    if (result.rowCount === 0) {
+      console.log('No existe una base de desarrollo previa: ' + DATABASE_NAME);
+      return;
+    }
+    if (result.rows[0].description !== DATABASE_COMMENT) throw new Error('La base ' + DATABASE_NAME + ' no pertenece a este entorno de desarrollo. No se ha eliminado.');
+    await client.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()', [DATABASE_NAME]);
+    await client.query('DROP DATABASE ' + DATABASE_NAME);
+    console.log('Base de datos de desarrollo eliminada: ' + DATABASE_NAME);
   });
 }
 
@@ -159,6 +174,21 @@ function dateTimeAt(dayOffset, hour, minute = 0) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
 }
 
+
+function birthdayFor(index) {
+  const year = 1968 + ((index * 3) % 45);
+  const month = ((index * 7) % 12) + 1;
+  const day = ((index * 11) % 27) + 1;
+  return String(year) + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+}
+
+function joinedAtFor(index) {
+  const year = 2020 + (index % 7);
+  const month = ((index * 5) % 12) + 1;
+  const day = ((index * 3) % 25) + 1;
+  return String(year) + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+}
+
 async function seedDatabase(configuration) {
   await withClient(configuration, DATABASE_NAME, async (client) => {
     await client.query('BEGIN');
@@ -171,40 +201,128 @@ async function seedDatabase(configuration) {
         console.log('Datos de demostración ya presentes; se conservan los cambios locales.');
         return;
       }
+      await client.query("UPDATE estilos SET nombre = 'Shaolin del Norte' WHERE nombre = 'Shaolin'");
+      await client.query("UPDATE estilos SET nombre = 'Wing Chun' WHERE nombre = 'Ving Tsun'");
+      await client.query("DELETE FROM estilos WHERE nombre = 'Jungar'");
+      await client.query("DELETE FROM grados WHERE nombre = 'Cinta Amarilla'");
+
+      const styles = [
+        ['Shaolin del Norte', 'Shaolin del Norte (Bei Shaolin): formas largas, piernas amplias y trabajo acrobático.'],
+        ['Hung Gar', 'Hung Gar o Hung Kuen: estilo sureño de posiciones firmes y trabajo de tigre y grulla.'],
+        ['Taijiquan estilo Yang', 'Taijiquan de la familia Yang, de movimientos amplios y continuos.'],
+        ['Wing Chun', 'Sistema de corta distancia centrado en estructura y línea central.'],
+        ['Xingyiquan', 'Xingyiquan, también escrito Xing Yi Quan: cinco elementos y doce animales.'],
+        ['Tanglangquan', 'Tanglangquan o Mantis religiosa: manos rápidas y cambios de ritmo.'],
+        ['Baguazhang', 'Baguazhang: palmas y desplazamiento circular.'],
+        ['Bajiquan', 'Bajiquan: potencia explosiva a muy poca distancia.'],
+      ];
+      const styleIds = new Map();
+      for (const [name, description] of styles) {
+        const result = await client.query('INSERT INTO estilos (nombre, descripcion) VALUES ($1, $2) ON CONFLICT (nombre) DO UPDATE SET descripcion = EXCLUDED.descripcion RETURNING id_estilo', [name, description]);
+        styleIds.set(name, result.rows[0].id_estilo);
+      }
+      const curricula = [
+        ['Shaolin del Norte', ['Lian Bu Quan', 'Gong Li Quan', 'Xiao Hong Quan', 'Da Hong Quan', 'Cha Quan'], ['Bastón (Gun)', 'Sable (Dao)', 'Espada recta (Jian)', 'Lanza (Qiang)', 'Alabarda (Pu Dao)']],
+        ['Hung Gar', ['Mui Fa Kuen', 'Lau Gar Kuen', 'Gung Ji Fuk Fu Kuen', 'Fu Hok Seung Ying Kuen', 'Tit Sin Kuen'], ['Bastón largo', 'Sable mariposa', 'Lanza', 'Sable doble', 'Gancho de tigre']],
+        ['Taijiquan estilo Yang', ['Forma tradicional Yang (108 movimientos)', 'Forma Yang de 49 movimientos', 'Forma Yang de 16 movimientos', 'Forma Yang de 13 movimientos', 'Forma Yang de demostración'], ['Espada (Jian)', 'Sable (Dao)', 'Abanico', 'Lanza', 'Bastón']],
+        ['Wing Chun', ['Siu Nim Tao', 'Chum Kiu', 'Biu Jee'], ['Bastón largo (Luk Dim Boon Gwan)', 'Cuchillos mariposa (Baat Jaam Do)']],
+        ['Xingyiquan', ['Wu Xing Quan', 'Lian Huan Quan', 'Za Shi Chui', 'Shi Er Xing', 'Ba Shi Quan'], ['Lanza', 'Sable', 'Espada', 'Bastón largo', 'Alabarda']],
+        ['Tanglangquan', ['Beng Bu Quan', 'Luan Jie Quan', 'Ba Zhou', 'Zhai Yao', 'Mei Hua Lu'], ['Bastón', 'Sable', 'Espada', 'Lanza', 'Látigo de nueve secciones']],
+        ['Baguazhang', ['Lao Ba Zhang', 'Ding Shi Ba Zhang', 'You Shen Ba Gua Zhang', 'Liu Shi Si Zhang', 'Tian Gan Quan'], ['Espada', 'Sable', 'Lanza', 'Bastón', 'Cuchillos de cuerno de ciervo']],
+        ['Bajiquan', ['Xiao Baji', 'Da Baji'], ['Lanza', 'Bastón', 'Espada']],
+      ];
+      const formIds = new Map();
+      for (const [styleName, emptyHandForms, weaponForms] of curricula) {
+        for (const name of emptyHandForms) {
+          const result = await client.query('INSERT INTO formas (id_estilo, nombre, descripcion) VALUES ($1, $2, $3) ON CONFLICT (nombre) DO UPDATE SET id_estilo = EXCLUDED.id_estilo, descripcion = EXCLUDED.descripcion RETURNING id_forma', [styleIds.get(styleName), name, 'Mano vacía · forma del currículo de ' + styleName + '.']);
+          formIds.set(name, result.rows[0].id_forma);
+        }
+        for (const weapon of weaponForms) {
+          const name = weapon + ' · ' + styleName;
+          const result = await client.query('INSERT INTO formas (id_estilo, nombre, descripcion) VALUES ($1, $2, $3) ON CONFLICT (nombre) DO UPDATE SET id_estilo = EXCLUDED.id_estilo, descripcion = EXCLUDED.descripcion RETURNING id_forma', [styleIds.get(styleName), name, 'Arma · ' + weapon + '.']);
+          formIds.set(name, result.rows[0].id_forma);
+        }
+      }
+      const grades = [
+        ['Cinta Blanca', 1, 'Blanco', []],
+        ['Cinta Amarilla', 2, 'Amarillo', ['Lian Bu Quan', 'Siu Nim Tao']],
+        ['Cinta Naranja', 3, 'Naranja', ['Gong Li Quan', 'Mui Fa Kuen', 'Forma Yang de 13 movimientos', 'Siu Nim Tao']],
+        ['Cinta Verde', 4, 'Verde', ['Xiao Hong Quan', 'Lau Gar Kuen', 'Chum Kiu', 'Wu Xing Quan', 'Beng Bu Quan', 'Xiao Baji']],
+        ['Cinta Azul', 5, 'Azul', ['Da Hong Quan', 'Gung Ji Fuk Fu Kuen', 'Forma Yang de 16 movimientos', 'Biu Jee', 'Lian Huan Quan', 'Luan Jie Quan', 'Lao Ba Zhang', 'Da Baji']],
+        ['Cinta Marrón', 6, 'Marrón', ['Cha Quan', 'Fu Hok Seung Ying Kuen', 'Forma tradicional Yang (108 movimientos)', 'Shi Er Xing', 'Ba Zhou', 'Ding Shi Ba Zhang', 'Bastón (Gun) · Shaolin del Norte', 'Bastón largo (Luk Dim Boon Gwan) · Wing Chun', 'Lanza · Xingyiquan', 'Lanza · Bajiquan']],
+        ['Cinta Negra I Dan', 7, 'Negro', ['Tit Sin Kuen', 'Forma Yang de 49 movimientos', 'Bastón largo · Hung Gar', 'Espada (Jian) · Taijiquan estilo Yang', 'Cuchillos mariposa (Baat Jaam Do) · Wing Chun', 'Espada · Xingyiquan', 'Látigo de nueve secciones · Tanglangquan', 'Cuchillos de cuerno de ciervo · Baguazhang', 'Gancho de tigre · Hung Gar', 'Sable · Baguazhang', 'Espada · Bajiquan', 'Alabarda (Pu Dao) · Shaolin del Norte']],
+      ];
+      const gradeIds = new Map();
+      for (const [name, order, beltColor, requiredFormNames] of grades) {
+        const result = await client.query('INSERT INTO grados (nombre, orden_grado, color_cinturon, formas_requeridas) VALUES ($1, $2, $3, $4) ON CONFLICT (orden_grado) DO UPDATE SET nombre = EXCLUDED.nombre, color_cinturon = EXCLUDED.color_cinturon, formas_requeridas = EXCLUDED.formas_requeridas RETURNING id_grado', [name, order, beltColor, requiredFormNames.length]);
+        const gradeId = result.rows[0].id_grado;
+        gradeIds.set(name, gradeId);
+        for (const formName of requiredFormNames) await client.query('INSERT INTO grado_forma (id_grado, id_forma, es_opcional) VALUES ($1, $2, FALSE) ON CONFLICT DO NOTHING', [gradeId, formIds.get(formName)]);
+      }
+
       const passwordHash = await bcrypt.hash('WushuDemo2026!', 12);
       await client.query('INSERT INTO administradores (nombre, fecha_inicio, correo_electronico, password_hash) VALUES ($1, CURRENT_DATE, $2, $3)', ['Administración de demostración', 'admin@wushu.test', passwordHash]);
-
       const instructors = [
-        ['Marta Serra', '2021-09-01', 'Ving Tsun', 'marta.serra@wushu.test'],
-        ['Daniel Rius', '2022-01-10', 'Jungar', 'daniel.rius@wushu.test'],
-        ['Laia Font', '2023-02-15', 'Shaolin', 'laia.font@wushu.test'],
+        ['Marta Serra', '2018-09-01', ['Shaolin del Norte'], 'marta.serra@wushu.test'], ['Daniel Rius', '2019-01-10', ['Hung Gar'], 'daniel.rius@wushu.test'],
+        ['Laia Font', '2019-09-15', ['Taijiquan estilo Yang'], 'laia.font@wushu.test'], ['Jordi Casals', '2020-02-01', ['Wing Chun'], 'jordi.casals@wushu.test'],
+        ['Mei Lin', '2020-09-01', ['Xingyiquan'], 'mei.lin@wushu.test'], ['Chen Wei', '2021-01-12', ['Tanglangquan', 'Baguazhang'], 'chen.wei@wushu.test'],
+        ['Sofia Rossi', '2021-09-01', ['Shaolin del Norte', 'Bajiquan'], 'sofia.rossi@wushu.test'], ['Arnau Vidal', '2022-01-10', ['Hung Gar', 'Xingyiquan'], 'arnau.vidal@wushu.test'],
+        ['Lucía Martín', '2022-09-15', ['Taijiquan estilo Yang', 'Baguazhang'], 'lucia.martin@wushu.test'], ['Zhang Wei', '2023-02-15', ['Wing Chun', 'Tanglangquan'], 'zhang.wei@wushu.test'],
       ];
       const instructorIds = [];
-      for (const [name, hiredAt, specialty, email] of instructors) {
-        const result = await client.query('INSERT INTO instructores (nombre, fecha_contratacion, activo, especialidad, correo_electronico, password_hash) VALUES ($1, $2, TRUE, $3, $4, $5) RETURNING id_instructor', [name, hiredAt, specialty, email, passwordHash]);
-        instructorIds.push(result.rows[0].id_instructor);
-        await client.query('INSERT INTO instructor_estilo (id_instructor, id_estilo) SELECT $1, id_estilo FROM estilos WHERE nombre = $2', [result.rows[0].id_instructor, specialty]);
+      for (const [name, hiredAt, specialties, email] of instructors) {
+        const result = await client.query('INSERT INTO instructores (nombre, fecha_contratacion, activo, especialidad, correo_electronico, password_hash) VALUES ($1, $2, TRUE, $3, $4, $5) RETURNING id_instructor', [name, hiredAt, specialties.join(' · '), email, passwordHash]);
+        const instructorId = result.rows[0].id_instructor;
+        instructorIds.push(instructorId);
+        for (const styleName of specialties) await client.query('INSERT INTO instructor_estilo (id_instructor, id_estilo) VALUES ($1, $2)', [instructorId, styleIds.get(styleName)]);
+      }
+
+      const studentNames = [
+        'Aina Puig', 'Marc Soler', 'Núria Vidal', 'Pau Ferrer', 'Laia Bosch', 'Jordi Pons', 'Carla Miró', 'Arnau Roca', 'Júlia Serra', 'Oriol Martí',
+        'Berta Casas', 'Biel Navarro', 'Clara Prat', 'Gerard Vila', 'Mariona Costa', 'Pol Mas', 'Eva Sala', 'Ferran Puig', 'Sílvia Grau', 'Nil Comas',
+        'Mireia Rius', 'Joan Esteve', 'Alba Fuster', 'Xavier Llorens', 'Irene Batlle', 'Sofía Rossi', 'Luca Bianchi', 'Elena Popescu', 'Andrei Ionescu', 'Marie Dubois',
+        'Lucas Martin', 'Anna Kowalska', 'Tomasz Nowak', 'Hannah Müller', 'Jonas Weber', 'Inês Silva', 'Tiago Santos', 'Aoife Murphy', 'Klara Novak', 'Marek Horvat',
+        'Li Wei', 'Wang Fang', 'Zhang Min', 'Chen Jie', 'Liu Yang', 'Zhao Lin', 'Xu Mei', 'Huang Tao', 'Zhou Yan', 'Wu Qiang',
+      ];
+      const studentIds = [];
+      for (const [index, name] of studentNames.entries()) {
+        const grade = grades[(index % (grades.length - 1)) + 1];
+        const result = await client.query('INSERT INTO alumnos (numero_matricula, fecha_ingreso, activo, fecha_nacimiento, id_grado, correo_electronico, password_hash, nombre) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id_alumno', ['WSB-' + String(index + 1).padStart(3, '0'), joinedAtFor(index), index % 13 !== 0, birthdayFor(index), gradeIds.get(grade[0]), 'alumno.' + String(index + 1).padStart(2, '0') + '@wushu.test', passwordHash, name]);
+        studentIds.push(result.rows[0].id_alumno);
+        for (const formName of grade[3].slice(0, Math.min(grade[3].length, 2 + (index % 4)))) await client.query('INSERT INTO alumno_forma (id_alumno, id_forma, fecha_aprendida) VALUES ($1, $2, $3)', [result.rows[0].id_alumno, formIds.get(formName), joinedAtFor(Math.max(0, index - 2))]);
       }
 
       const courses = [
-        ['Ving Tsun: base y estructura', 'Técnica', 'Sesión de fundamentos para alumnado de todos los niveles.'],
-        ['Jungar: acondicionamiento', 'Preparación física', 'Trabajo de fuerza, movilidad y coordinación.'],
-        ['Shaolin: formas tradicionales', 'Formas', 'Repaso guiado de una forma tradicional.'],
-        ['Práctica abierta de Wu-shu', 'Entrenamiento', 'Sesión abierta para practicar y resolver dudas.'],
+        ['Clase regular · mañana', 'Entrenamiento', 'Sesión regular de mañana para trabajo técnico general.'], ['Clase regular · tarde', 'Entrenamiento', 'Sesión regular de tarde para trabajo técnico general.'],
+        ['Técnica de mano vacía', 'Técnica', 'Trabajo de estructura, desplazamiento y aplicación de formas sin armas.'], ['Práctica con armas', 'Armas', 'Sesión de seguridad y repaso técnico con armas de entrenamiento.'],
+        ['Preparación física', 'Preparación física', 'Movilidad, fuerza y acondicionamiento para la práctica.'], ['Práctica supervisada', 'Entrenamiento', 'Espacio guiado para practicar y recibir correcciones.'],
+        ['Iniciación al Wu-shu', 'Iniciación', 'Sesión de acogida para alumnado que empieza.'], ['Entrenamiento avanzado', 'Avanzado', 'Trabajo técnico para alumnado con experiencia.'],
       ];
       const courseIds = [];
       for (const [name, topic, description] of courses) {
         const result = await client.query('INSERT INTO cursos (nombre, tema, descripcion) VALUES ($1, $2, $3) RETURNING id_curso', [name, topic, description]);
         courseIds.push(result.rows[0].id_curso);
       }
-
-      const sessions = [[0, 0, -3, 18, 30, true], [1, 1, -1, 19, 0, true], [2, 2, 1, 18, 30, true], [3, 0, 2, 19, 0, true], [0, 0, 4, 18, 30, true], [1, 1, 6, 19, 0, true], [2, 2, 8, 18, 30, true], [3, 0, 10, 19, 0, true], [0, 0, 12, 18, 30, true], [1, 1, 14, 19, 0, true], [2, 2, 3, 17, 0, false]];
+      const sessions = [
+        [0, 0, -7, 9, 30, true], [1, 1, -5, 18, 30, true], [2, 2, -3, 19, 0, true], [3, 3, -1, 18, 0, true],
+        [4, 4, 1, 17, 30, true], [5, 5, 2, 19, 0, true], [6, 6, 3, 18, 0, true], [7, 7, 4, 19, 15, true],
+        [0, 8, 5, 9, 30, true], [1, 9, 6, 18, 30, true], [2, 0, 7, 19, 0, true], [3, 1, 8, 18, 0, true],
+        [4, 2, 9, 17, 30, true], [5, 3, 10, 19, 0, true], [6, 4, 11, 18, 0, true], [7, 5, 12, 19, 15, true],
+        [0, 6, 14, 9, 30, true], [1, 7, 15, 18, 30, true], [2, 8, 16, 19, 0, true], [3, 9, 17, 18, 0, true],
+        [4, 0, 19, 17, 30, true], [5, 1, 21, 19, 0, true], [6, 2, 22, 18, 0, true], [7, 3, 24, 19, 15, true],
+        [3, 9, 26, 18, 0, false], [5, 5, 28, 19, 0, true],
+      ];
+      const scheduledCourseIds = [];
       for (const [courseIndex, instructorIndex, offset, hour, minute, active] of sessions) {
-        await client.query('INSERT INTO cursos_agendados (id_curso, id_instructor, fecha_hora, activo) VALUES ($1, $2, $3, $4)', [courseIds[courseIndex], instructorIds[instructorIndex], dateTimeAt(offset, hour, minute), active]);
+        const result = await client.query('INSERT INTO cursos_agendados (id_curso, id_instructor, fecha_hora, activo) VALUES ($1, $2, $3, $4) RETURNING id_curso_agendado', [courseIds[courseIndex], instructorIds[instructorIndex], dateTimeAt(offset, hour, minute), active]);
+        scheduledCourseIds.push(result.rows[0].id_curso_agendado);
+      }
+      for (const [sessionIndex, scheduledCourseId] of scheduledCourseIds.entries()) {
+        for (let attendeeOffset = 0; attendeeOffset < 4; attendeeOffset += 1) await client.query("INSERT INTO inscripciones (id_alumno, id_curso_agendado, estado) VALUES ($1, $2, 'activa')", [studentIds[(sessionIndex * 3 + attendeeOffset * 7) % studentIds.length], scheduledCourseId]);
       }
       await client.query('INSERT INTO dev_support.seed_state (version) VALUES ($1)', [SEED_VERSION]);
       await client.query('COMMIT');
-      console.log('Datos de demostración creados: administración, instructores, cursos y calendario.');
+      console.log('Datos de demostración creados: 50 alumnos, 10 instructores, 8 estilos, 70 formas, grados y calendario.');
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -237,6 +355,7 @@ async function main() {
   const java = findJava(configuration);
   await assertPortFree(8000);
   await assertPortFree(8080);
+  if (process.argv.includes('--reset')) await resetDevelopmentDatabase(configuration);
   await prepareDevelopmentDatabase(configuration);
   backendProcess = startBackend(configuration, java);
   await waitForBackend(backendProcess);

@@ -8,7 +8,8 @@
     "dev:front": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:reset": "node scripts/dev.mjs --reset"
   },
   "dependencies": {
     "react": "^19.2.8",

@@ -46,11 +46,15 @@ npm run dev
 
 Cada ordenador debe instalar sus propias dependencias. No copiar `node_modules/` entre macOS y Windows: algunas herramientas contienen binarios distintos para cada plataforma.
 
-`npm run dev` prepara el entorno completo: comprueba que los puertos 8000 y 8080 estén libres, crea si hace falta la base PostgreSQL local `kungfu_school_dev`, arranca el backend, aplica sus migraciones y carga datos de demostración solo la primera vez. Después arranca el front en http://127.0.0.1:8000/.
+`npm run dev` prepara el entorno completo: comprueba que los puertos 8000 y 8080 estén libres, crea si hace falta la base PostgreSQL local `kungfu_school_dev`, arranca el backend, aplica sus migraciones y carga datos de demostración completos solo la primera vez. Después arranca el front en http://127.0.0.1:8000/.
 
 La base queda en el ordenador entre arranques, también los cambios que se hagan durante las pruebas. El lanzador únicamente acepta una base local y se niega a adoptar una base con ese nombre si no fue creada por él. No borra ni reinicializa datos.
 
-Los datos iniciales incluyen un administrador, tres instructores, cuatro cursos y actividades repartidas entre días recientes y las dos semanas siguientes. La cuenta de demostración es `admin@wushu.test` con contraseña `WushuDemo2026!`; es exclusiva para esta base local y ficticia.
+Para borrar únicamente esta base local marcada por el proyecto y crearla de nuevo con los datos iniciales, detener primero el entorno con Ctrl+C y ejecutar el comando npm run dev:reset.
+
+Este comando no puede eliminar una base con el mismo nombre que no haya sido creada por el lanzador.
+
+Los datos iniciales incluyen un administrador, 50 alumnos, 10 instructores, 8 estilos, 70 formas, grados con sus formas requeridas, ocho tipos de curso y actividades repartidas entre días recientes y las cuatro semanas siguientes. La cuenta de demostración es `admin@wushu.test` con contraseña `WushuDemo2026!`; es exclusiva para esta base local y ficticia.
 
 Hace falta instalar una vez PostgreSQL local y Java 21 además de Node. En macOS el usuario por defecto de PostgreSQL es el mismo usuario del sistema; en Windows es normalmente `postgres`. Si ese usuario tiene contraseña, copiar `.env.example` como `.env.dev.local` y completar `DEV_DB_USER` y `DEV_DB_PASSWORD`. Este archivo está ignorado por Git. Se puede indicar `DEV_JAVA_HOME` en ese mismo archivo si Java 21 no está disponible desde la terminal.
 
