@@ -161,7 +161,8 @@ export function CalendarPage() {
 
   async function handleCreateActivity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const formData = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const formData = new FormData(form)
     const dateValue = String(formData.get('date'))
     const timeValue = String(formData.get('time'))
     const date = new Date(`${dateValue}T${timeValue}`)
@@ -185,10 +186,9 @@ export function CalendarPage() {
       })
       await loadCalendar()
       setMonthDate(startOfMonth(date))
-      setSelectedDate(date)
       setView('month')
       setIsCreateOpen(false)
-      event.currentTarget.reset()
+      form.reset()
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar la actividad.')
     } finally {
