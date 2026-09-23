@@ -191,7 +191,11 @@ export function CalendarPage() {
                 return (
                   <button
                     key={dateKey(date)}
-                    className={`self-start rounded-soft border border-line p-2.5 text-left ${outsideMonth ? 'min-h-20 bg-canvas/45 text-muted' : 'min-h-40 bg-white/60 text-ink hover:border-gold'}`}
+                    className={`flex flex-col rounded-soft border border-line p-2.5 text-left ${
+                      outsideMonth
+                        ? 'aspect-square w-4/5 justify-self-start self-start bg-canvas/45 text-muted'
+                        : 'min-h-40 bg-white/60 text-ink hover:border-gold'
+                    }`}
                     type="button"
                     onClick={() => setSelectedDate(date)}
                   >
@@ -234,42 +238,51 @@ export function CalendarPage() {
       )}
 
       {selectedDate ? (
-        <PanelCard className="mt-5 p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="m-0 text-xs font-black tracking-[0.12em] text-red uppercase">Día seleccionado</p>
-              <h2 className="mt-2 text-2xl font-bold text-ink">
-                {new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(selectedDate)}
-              </h2>
-            </div>
-            <span className="w-fit rounded-full bg-red/10 px-3 py-1 text-sm font-bold text-red-dark">
-              {selectedActivities.length} {selectedActivities.length === 1 ? 'actividad' : 'actividades'}
-            </span>
-          </div>
+        <div className="fixed inset-0 z-20 grid place-items-center bg-ink/55 p-5" role="presentation" onClick={() => setSelectedDate(null)}>
+          <div className="w-full max-w-2xl" role="dialog" aria-modal="true" aria-labelledby="selected-day-title" onClick={(event) => event.stopPropagation()}>
+            <PanelCard className="max-h-[85vh] overflow-y-auto p-6 shadow-xl">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="m-0 text-xs font-black tracking-[0.12em] text-red uppercase">Día seleccionado</p>
+                  <h2 id="selected-day-title" className="mt-2 text-2xl font-bold text-ink">
+                    {new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(selectedDate)}
+                  </h2>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="w-fit rounded-full bg-red/10 px-3 py-1 text-sm font-bold text-red-dark">
+                    {selectedActivities.length} {selectedActivities.length === 1 ? 'actividad' : 'actividades'}
+                  </span>
+                  <button className="grid size-9 place-items-center rounded-full border border-line bg-white text-lg font-bold text-red-dark hover:border-red" type="button" onClick={() => setSelectedDate(null)} aria-label="Cerrar detalle del día">
+                    ×
+                  </button>
+                </div>
+              </div>
 
-          {selectedActivities.length === 0 ? (
-            <p className="mt-5 text-base text-muted">No hay actividades programadas para este día.</p>
-          ) : (
-            <div className="mt-5 grid gap-3">
-              {selectedActivities.map((activity) => (
-                <article key={activity.id} className="rounded-soft border border-line bg-white/60 p-4">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h3 className="m-0 text-base font-bold text-ink">{activity.title}</h3>
-                      <p className="mt-1 text-sm text-muted">{activity.topic} · {activity.instructor}</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <time className="text-sm font-bold text-red-dark">{activity.time}</time>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${activity.active ? 'bg-green-100 text-green-800' : 'bg-line text-muted'}`}>
-                        {activity.active ? 'Activa' : 'Cancelada'}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </PanelCard>
+              {selectedActivities.length === 0 ? (
+                <p className="mt-5 text-base text-muted">No hay actividades programadas para este día.</p>
+              ) : (
+                <div className="mt-5 grid gap-3">
+                  {selectedActivities.map((activity) => (
+                    <article key={activity.id} className="rounded-soft border border-line bg-white/60 p-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="m-0 text-base font-bold text-ink">{activity.title}</h3>
+                          <p className="mt-1 text-sm text-muted">{activity.topic} · {activity.instructor}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <time className="text-sm font-bold text-red-dark">{activity.time}</time>
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${activity.active ? 'bg-green-100 text-green-800' : 'bg-line text-muted'}`}>
+                            {activity.active ? 'Activa' : 'Cancelada'}
+                          </span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </PanelCard>
+          </div>
+        </div>
       ) : null}
     </section>
   )
