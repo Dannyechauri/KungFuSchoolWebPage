@@ -37,8 +37,8 @@ export function AppLayout() {
           ))}
         </nav>
 
-        <p className="mt-8 rounded-panel border border-white/15 bg-white/6 p-4 text-sm leading-6 text-cream-muted">
-          Primera demostración: resumen de la escuela y agenda de actividades.
+        <p className="mt-8 rounded-panel border border-white/15 bg-white/6 p-4 text-sm text-cream-muted">
+          v0 · Herramienta de administración
         </p>
       </aside>
 
