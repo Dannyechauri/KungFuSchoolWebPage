@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import { PanelCard } from '../components/PanelCard'
+import { formatActivityDate, getUpcomingDemoActivities } from '../data/demoActivities'
 
 const summaryItems = [
   { label: 'Alumnos activos', value: '0', detail: 'pendientes de cargar' },
@@ -8,23 +9,10 @@ const summaryItems = [
   { label: 'Próximas actividades', value: '8', detail: 'durante las próximas semanas' },
 ]
 
-const upcomingActivities = [
-  { dayOffset: 1, time: '18:30', title: 'Ving Tsun: base y estructura', topic: 'Técnica', instructor: 'Marta Serra' },
-  { dayOffset: 2, time: '19:00', title: 'Práctica abierta de Wu-shu', topic: 'Entrenamiento', instructor: 'Marta Serra' },
-  { dayOffset: 4, time: '18:30', title: 'Ving Tsun: base y estructura', topic: 'Técnica', instructor: 'Marta Serra' },
-  { dayOffset: 6, time: '19:00', title: 'Jungar: acondicionamiento', topic: 'Preparación física', instructor: 'Daniel Rius' },
-  { dayOffset: 8, time: '18:30', title: 'Shaolin: formas tradicionales', topic: 'Formas', instructor: 'Laia Font' },
-]
-
-function formatActivityDate(dayOffset: number, time: string) {
-  const date = new Date()
-  date.setHours(0, 0, 0, 0)
-  date.setDate(date.getDate() + dayOffset)
-
-  return `${new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(date)} · ${time}`
-}
-
 export function HomePage() {
+  const upcomingActivities = getUpcomingDemoActivities().slice(0, 5)
+  const nextActivity = upcomingActivities[0]
+
   return (
     <section className="max-w-6xl">
       <p className="mb-2 text-xs font-black tracking-[0.12em] text-red uppercase">Inicio</p>
@@ -62,7 +50,7 @@ export function HomePage() {
                   <strong className="block text-base text-ink">{activity.title}</strong>
                   <span className="mt-1 block text-sm text-muted">{activity.topic} · {activity.instructor}</span>
                 </div>
-                <time className="shrink-0 text-sm font-bold text-red-dark">{formatActivityDate(activity.dayOffset, activity.time)}</time>
+                <time className="shrink-0 text-sm font-bold text-red-dark">{formatActivityDate(activity.date)}</time>
               </li>
             ))}
           </ul>
@@ -71,12 +59,12 @@ export function HomePage() {
         <PanelCard className="flex flex-col justify-between p-6">
           <div>
             <p className="m-0 text-xs font-black tracking-[0.12em] text-red uppercase">Siguiente clase</p>
-            <h2 className="mt-3 text-2xl font-bold leading-tight text-ink">Ving Tsun: base y estructura</h2>
-            <p className="mt-3 text-base leading-7 text-muted">Marta Serra dirige la próxima sesión del calendario.</p>
+            <h2 className="mt-3 text-2xl font-bold leading-tight text-ink">{nextActivity?.title}</h2>
+            <p className="mt-3 text-base leading-7 text-muted">{nextActivity?.instructor} dirige la próxima sesión del calendario.</p>
           </div>
           <div className="mt-8 border-t border-line pt-4">
-            <time className="block text-lg font-bold text-red-dark">{formatActivityDate(1, '18:30')}</time>
-            <span className="mt-1 block text-sm text-muted">Técnica</span>
+            <time className="block text-lg font-bold text-red-dark">{nextActivity ? formatActivityDate(nextActivity.date) : 'Sin actividades'}</time>
+            <span className="mt-1 block text-sm text-muted">{nextActivity?.topic}</span>
           </div>
         </PanelCard>
       </div>
