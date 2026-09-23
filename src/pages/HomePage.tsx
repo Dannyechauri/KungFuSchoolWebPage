@@ -1,16 +1,52 @@
 import { Link } from 'react-router'
+import { useEffect, useMemo, useState } from 'react'
+import { apiRequest } from '../api/client'
 import { PanelCard } from '../components/PanelCard'
-import { formatActivityDate, getUpcomingDemoActivities } from '../data/demoActivities'
+import { formatActivityDate } from '../data/demoActivities'
 
-const summaryItems = [
-  { label: 'Alumnos activos', value: '0', detail: 'pendientes de cargar' },
-  { label: 'Instructores', value: '3', detail: 'equipo docente activo' },
-  { label: 'Cursos', value: '4', detail: 'en el catálogo' },
-  { label: 'Próximas actividades', value: '8', detail: 'durante las próximas semanas' },
-]
+type Row = Record<string, unknown>
 
 export function HomePage() {
-  const upcomingActivities = getUpcomingDemoActivities().slice(0, 5)
+  const [students, setStudents] = useState<Row[]>([])
+  const [courses, setCourses] = useState<Row[]>([])
+  const [instructors, setInstructors] = useState<Row[]>([])
+  const [scheduledCourses, setScheduledCourses] = useState<Row[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [referenceTime] = useState(() => Date.now())
+
+  useEffect(() => {
+    let active = true
+    void Promise.all([
+      apiRequest<Row[]>('/api/database/tables/alumnos/rows?limit=500'),
+      apiRequest<Row[]>('/api/database/tables/cursos/rows?limit=500'),
+      apiRequest<Row[]>('/api/database/tables/instructores/rows?limit=500'),
+      apiRequest<Row[]>('/api/database/tables/cursos_agendados/rows?limit=500'),
+    ]).then(([loadedStudents, loadedCourses, loadedInstructors, loadedScheduledCourses]) => {
+      if (!active) return
+      setStudents(loadedStudents)
+      setCourses(loadedCourses)
+      setInstructors(loadedInstructors)
+      setScheduledCourses(loadedScheduledCourses)
+    }).catch(() => {}).finally(() => { if (active) setIsLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  const upcomingActivities = useMemo(() => {
+    const coursesById = new Map(courses.map((course) => [Number(course.id_curso), course]))
+    const instructorsById = new Map(instructors.map((instructor) => [Number(instructor.id_instructor), instructor]))
+    return scheduledCourses.map((scheduledCourse) => {
+      const date = new Date(String(scheduledCourse.fecha_hora))
+      const course = coursesById.get(Number(scheduledCourse.id_curso))
+      const instructor = instructorsById.get(Number(scheduledCourse.id_instructor))
+      return { id: String(scheduledCourse.id_curso_agendado), date, title: String(course?.nombre ?? 'Curso'), topic: String(course?.tema ?? 'Sin tema'), instructor: String(instructor?.nombre ?? 'Sin instructor'), active: scheduledCourse.activo !== false }
+    }).filter((activity) => activity.active && !Number.isNaN(activity.date.getTime()) && activity.date.getTime() >= referenceTime).sort((a, b) => a.date.getTime() - b.date.getTime()).slice(0, 5)
+  }, [courses, instructors, referenceTime, scheduledCourses])
+  const summaryItems = [
+    { label: 'Alumnos activos', value: String(students.filter((student) => student.activo !== false).length), detail: `${students.length} registrados` },
+    { label: 'Instructores', value: String(instructors.filter((instructor) => instructor.activo !== false).length), detail: 'equipo docente activo' },
+    { label: 'Cursos', value: String(courses.length), detail: 'en el catálogo' },
+    { label: 'Próximas actividades', value: String(upcomingActivities.length), detail: 'durante las próximas semanas' },
+  ]
   const nextActivity = upcomingActivities[0]
 
   return (
@@ -21,7 +57,7 @@ export function HomePage() {
         Aquí construiremos la vista principal para mostrar la información útil de la escuela y las próximas actividades.
       </p>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {isLoading ? <p className="mt-8 text-muted">Cargando resumen…</p> : <><div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {summaryItems.map((item) => (
           <PanelCard key={item.label} className="p-5">
             <span className="block text-sm font-bold text-muted">{item.label}</span>
@@ -45,7 +81,7 @@ export function HomePage() {
 
           <ul className="mt-5 grid divide-y divide-line">
             {upcomingActivities.map((activity) => (
-              <li key={`${activity.dayOffset}-${activity.time}`} className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
+              <li key={activity.id} className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <strong className="block text-base text-ink">{activity.title}</strong>
                   <span className="mt-1 block text-sm text-muted">{activity.topic} · {activity.instructor}</span>
@@ -67,7 +103,7 @@ export function HomePage() {
             <span className="mt-1 block text-sm text-muted">{nextActivity?.topic}</span>
           </div>
         </PanelCard>
-      </div>
+      </div></>}
     </section>
   )
 }

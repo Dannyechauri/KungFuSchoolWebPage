@@ -4,6 +4,7 @@ import { LoginPage } from './features/auth/LoginPage'
 import { useAuth } from './features/auth/useAuth'
 import { AppLayout } from './layouts/AppLayout'
 import { CalendarPage } from './pages/CalendarPage'
+import { DataManagementPage } from './pages/DataManagementPage'
 import { HomePage } from './pages/HomePage'
 
 function AuthenticatedApp() {
@@ -22,6 +23,7 @@ function AuthenticatedApp() {
       <Route element={<AppLayout />}>
         <Route index element={<HomePage />} />
         <Route path="calendario" element={<CalendarPage />} />
+        <Route path="datos" element={<DataManagementPage />} />
 
         {/*
           Rutas previstas para fases posteriores. No se muestran aún en el menú

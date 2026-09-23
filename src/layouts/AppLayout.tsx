@@ -4,6 +4,7 @@ import { useAuth } from '../features/auth/useAuth'
 const navigationItems = [
   { to: '/', label: 'Inicio', icon: '館' },
   { to: '/calendario', label: 'Calendario', icon: '日' },
+  { to: '/datos', label: 'Datos', icon: '録' },
 ]
 
 export function AppLayout() {
