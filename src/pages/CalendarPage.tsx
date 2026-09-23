@@ -187,13 +187,14 @@ export function CalendarPage() {
               {monthCells(monthDate).map((date) => {
                 const dayActivities = activitiesByDay.get(dateKey(date)) ?? []
                 const outsideMonth = date.getMonth() !== monthDate.getMonth()
+                const beforeMonth = date.getTime() < monthDate.getTime()
 
                 return (
                   <button
                     key={dateKey(date)}
                     className={`flex flex-col rounded-soft border border-line p-2.5 text-left ${
                       outsideMonth
-                        ? 'aspect-square w-4/5 justify-self-start self-start bg-canvas/45 text-muted'
+                        ? `aspect-square w-1/4 self-start bg-canvas/45 text-muted ${beforeMonth ? 'justify-self-end' : 'justify-self-start'}`
                         : 'min-h-40 bg-white/60 text-ink hover:border-gold'
                     }`}
                     type="button"
