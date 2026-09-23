@@ -1,1 +1,22 @@
 @import "tailwindcss";
+@import "./styles/theme.css";
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    min-width: 20rem;
+    min-height: 100vh;
+    margin: 0;
+    color: var(--color-ink);
+    background:
+      radial-gradient(circle at top left, rgb(201 154 58 / 16%), transparent 32rem),
+      linear-gradient(135deg, rgb(255 255 255 / 45%), transparent 20rem),
+      var(--color-canvas);
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+}
