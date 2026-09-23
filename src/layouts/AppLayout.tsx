@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from 'react-router'
+import { useAuth } from '../features/auth/useAuth'
 
 const navigationItems = [
   { to: '/', label: 'Inicio', icon: '館' },
@@ -6,6 +7,8 @@ const navigationItems = [
 ]
 
 export function AppLayout() {
+  const { user, logout } = useAuth()
+
   return (
     <div className="grid min-h-screen md:grid-cols-[18.25rem_minmax(0,1fr)]">
       <aside className="flex min-h-full flex-col bg-sidebar px-6 py-7 text-cream md:min-h-screen">
@@ -37,9 +40,17 @@ export function AppLayout() {
           ))}
         </nav>
 
-        <p className="mt-auto rounded-panel border border-white/15 bg-white/6 p-4 text-sm text-cream-muted">
-          v0 · Herramienta de administración
-        </p>
+        <div className="mt-auto grid gap-3">
+          <div className="rounded-panel border border-white/15 bg-white/6 p-4 text-sm text-cream-muted">
+            <strong className="block text-cream">{user?.displayName}</strong>
+            <button className="mt-2 text-sm font-bold text-cream-muted hover:text-white" type="button" onClick={() => void logout()}>
+              Cerrar sesión
+            </button>
+          </div>
+          <p className="m-0 rounded-panel border border-white/15 bg-white/6 p-4 text-sm text-cream-muted">
+            v0 · Herramienta de administración
+          </p>
+        </div>
       </aside>
 
       <main className="min-w-0 p-6 md:p-9">

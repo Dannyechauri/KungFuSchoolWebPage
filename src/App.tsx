@@ -1,9 +1,22 @@
 import { Navigate, Route, Routes } from 'react-router'
+import { AuthProvider } from './features/auth/AuthProvider'
+import { LoginPage } from './features/auth/LoginPage'
+import { useAuth } from './features/auth/useAuth'
 import { AppLayout } from './layouts/AppLayout'
 import { CalendarPage } from './pages/CalendarPage'
 import { HomePage } from './pages/HomePage'
 
-function App() {
+function AuthenticatedApp() {
+  const { user, isCheckingSession } = useAuth()
+
+  if (isCheckingSession) {
+    return <main className="grid min-h-screen place-items-center text-muted">Comprobando sesión…</main>
+  }
+
+  if (!user) {
+    return <LoginPage />
+  }
+
   return (
     <Routes>
       <Route element={<AppLayout />}>
@@ -29,6 +42,14 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
   )
 }
 

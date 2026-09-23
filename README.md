@@ -54,11 +54,13 @@ Los datos iniciales incluyen un administrador, tres instructores, cuatro cursos 
 
 Hace falta instalar una vez PostgreSQL local y Java 21 además de Node. En macOS el usuario por defecto de PostgreSQL es el mismo usuario del sistema; en Windows es normalmente `postgres`. Si ese usuario tiene contraseña, copiar `.env.example` como `.env.dev.local` y completar `DEV_DB_USER` y `DEV_DB_PASSWORD`. Este archivo está ignorado por Git. Se puede indicar `DEV_JAVA_HOME` en ese mismo archivo si Java 21 no está disponible desde la terminal.
 
-Para trabajar solo en la interfaz, sin arrancar PostgreSQL ni el backend:
+Para revisar únicamente la maquetación, sin arrancar PostgreSQL ni el backend:
 
 ```text
 npm run dev:front
 ```
+
+Este modo no permite iniciar sesión ni consultar o guardar datos. Para usar la aplicación de administración se necesita `npm run dev`.
 
 El puerto es fijo: si está ocupado, el lanzador lo indicará en lugar de elegir otro.
 

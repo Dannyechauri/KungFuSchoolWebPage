@@ -1,11 +1,42 @@
 import type { FormEvent } from 'react'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { apiRequest } from '../api/client'
 import { PanelCard } from '../components/PanelCard'
-import { dateKey, formatActivityDate, getDemoActivities, type DatedDemoActivity } from '../data/demoActivities'
+import { dateKey, formatActivityDate } from '../data/demoActivities'
+import { useAuth } from '../features/auth/useAuth'
 
 type CalendarView = 'month' | 'upcoming'
 
 const weekdays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+
+type Course = {
+  id_curso: number
+  nombre: string
+  tema: string
+}
+
+type Instructor = {
+  id_instructor: number
+  nombre: string
+}
+
+type ScheduledCourse = {
+  id_curso_agendado: number
+  id_curso: number
+  id_instructor: number
+  fecha_hora: string
+  activo: boolean
+}
+
+type CalendarActivity = {
+  id: number
+  date: Date
+  time: string
+  title: string
+  topic: string
+  instructor: string
+  active: boolean
+}
 
 function startOfMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), 1)
@@ -28,35 +59,92 @@ function monthCells(monthDate: Date) {
   })
 }
 
-function dateFromForm(dateValue: string, timeValue: string) {
-  const [year, month, day] = dateValue.split('-').map(Number)
-  const [hour, minute] = timeValue.split(':').map(Number)
-  return new Date(year, month - 1, day, hour, minute)
+function requestCalendarData() {
+  return Promise.all([
+    apiRequest<Course[]>('/api/database/tables/cursos/rows?limit=500'),
+    apiRequest<Instructor[]>('/api/database/tables/instructores/rows?limit=500'),
+    apiRequest<ScheduledCourse[]>('/api/database/tables/cursos_agendados/rows?limit=500'),
+  ])
 }
 
 export function CalendarPage() {
+  const { user } = useAuth()
   const [view, setView] = useState<CalendarView>('month')
   const [monthDate, setMonthDate] = useState(() => startOfMonth(new Date()))
   const [referenceTime] = useState(() => Date.now())
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-  const [createdActivities, setCreatedActivities] = useState<DatedDemoActivity[]>([])
-  const baseActivities = useMemo(() => getDemoActivities(), [])
-  const activities = useMemo(
-    () => [...baseActivities, ...createdActivities].sort((first, second) => first.date.getTime() - second.date.getTime()),
-    [baseActivities, createdActivities],
-  )
+  const [courses, setCourses] = useState<Course[]>([])
+  const [instructors, setInstructors] = useState<Instructor[]>([])
+  const [scheduledCourses, setScheduledCourses] = useState<ScheduledCourse[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadCalendar = useCallback(async () => {
+    try {
+      const [loadedCourses, loadedInstructors, loadedScheduledCourses] = await requestCalendarData()
+      setCourses(loadedCourses)
+      setInstructors(loadedInstructors)
+      setScheduledCourses(loadedScheduledCourses)
+      setError(null)
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el calendario.')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function synchronizeCalendar() {
+      try {
+        const [loadedCourses, loadedInstructors, loadedScheduledCourses] = await requestCalendarData()
+        if (!active) return
+        setCourses(loadedCourses)
+        setInstructors(loadedInstructors)
+        setScheduledCourses(loadedScheduledCourses)
+        setError(null)
+      } catch (loadError) {
+        if (active) setError(loadError instanceof Error ? loadError.message : 'No se pudo cargar el calendario.')
+      } finally {
+        if (active) setIsLoading(false)
+      }
+    }
+
+    void synchronizeCalendar()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const activities = useMemo<CalendarActivity[]>(() => {
+    const coursesById = new Map(courses.map((course) => [course.id_curso, course]))
+    const instructorsById = new Map(instructors.map((instructor) => [instructor.id_instructor, instructor]))
+
+    return scheduledCourses
+      .map((scheduledCourse) => {
+        const date = new Date(scheduledCourse.fecha_hora)
+        const course = coursesById.get(scheduledCourse.id_curso)
+        const instructor = instructorsById.get(scheduledCourse.id_instructor)
+        return {
+          id: scheduledCourse.id_curso_agendado,
+          date,
+          time: new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' }).format(date),
+          title: course?.nombre ?? 'Curso sin nombre',
+          topic: course?.tema ?? 'Sin tema',
+          instructor: instructor?.nombre ?? 'Instructor sin asignar',
+          active: scheduledCourse.activo !== false,
+        }
+      })
+      .filter((activity) => !Number.isNaN(activity.date.getTime()))
+      .sort((first, second) => first.date.getTime() - second.date.getTime())
+  }, [courses, instructors, scheduledCourses])
   const upcomingActivities = useMemo(
     () => activities.filter((activity) => activity.active && activity.date.getTime() >= referenceTime),
     [activities, referenceTime],
-  )
-  const courses = useMemo(
-    () => Array.from(new Map(baseActivities.map((activity) => [activity.title, activity])).values()),
-    [baseActivities],
-  )
-  const instructors = useMemo(
-    () => Array.from(new Set(baseActivities.map((activity) => activity.instructor))),
-    [baseActivities],
   )
   const activitiesByDay = useMemo(() => {
     const grouped = new Map<string, typeof activities>()
@@ -71,32 +159,61 @@ export function CalendarPage() {
   const monthTitle = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(monthDate)
   const selectedActivities = selectedDate ? activitiesByDay.get(dateKey(selectedDate)) ?? [] : []
 
-  function handleCreateActivity(event: FormEvent<HTMLFormElement>) {
+  async function handleCreateActivity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
-    const title = String(formData.get('course'))
-    const course = courses.find((item) => item.title === title)
-    const date = dateFromForm(String(formData.get('date')), String(formData.get('time')))
+    const dateValue = String(formData.get('date'))
+    const timeValue = String(formData.get('time'))
+    const date = new Date(`${dateValue}T${timeValue}`)
 
-    if (!course || Number.isNaN(date.getTime())) return
-
-    const activity: DatedDemoActivity = {
-      id: `local-${Date.now()}`,
-      dayOffset: 0,
-      time: String(formData.get('time')),
-      title: course.title,
-      topic: course.topic,
-      instructor: String(formData.get('instructor')),
-      active: true,
-      date,
+    if (Number.isNaN(date.getTime())) {
+      setError('La fecha y la hora no son válidas.')
+      return
     }
 
-    setCreatedActivities((currentActivities) => [...currentActivities, activity])
-    setMonthDate(startOfMonth(date))
-    setSelectedDate(date)
-    setView('month')
-    setIsCreateOpen(false)
-    event.currentTarget.reset()
+    setIsSaving(true)
+    setError(null)
+    try {
+      await apiRequest('/api/database/tables/cursos_agendados/rows', {
+        method: 'POST',
+        body: JSON.stringify({
+          id_curso: Number(formData.get('course')),
+          id_instructor: Number(formData.get('instructor')),
+          fecha_hora: `${dateValue}T${timeValue}`,
+          activo: true,
+        }),
+      })
+      await loadCalendar()
+      setMonthDate(startOfMonth(date))
+      setSelectedDate(date)
+      setView('month')
+      setIsCreateOpen(false)
+      event.currentTarget.reset()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar la actividad.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const isAdmin = user?.role === 'ADMIN'
+
+  if (isLoading) {
+    return <section className="w-full text-muted">Cargando calendario…</section>
+  }
+
+  if (error && courses.length === 0) {
+    return (
+      <section className="w-full">
+        <h1 className="m-0 text-4xl font-bold text-ink">Calendario</h1>
+        <PanelCard className="mt-6 p-6">
+          <p className="m-0 text-red-dark">{error}</p>
+          <button className="mt-4 min-h-10 rounded-full bg-red px-4 text-sm font-bold text-white" type="button" onClick={() => { setIsLoading(true); void loadCalendar() }}>
+            Reintentar
+          </button>
+        </PanelCard>
+      </section>
+    )
   }
 
   return (
@@ -125,9 +242,11 @@ export function CalendarPage() {
               Próximas actividades
             </button>
           </div>
-          <button className="min-h-10 rounded-full bg-red px-4 text-sm font-bold text-white hover:bg-red-dark" type="button" onClick={() => setIsCreateOpen((open) => !open)}>
-            {isCreateOpen ? 'Cerrar formulario' : '+ Añadir actividad'}
-          </button>
+          {isAdmin ? (
+            <button className="min-h-10 rounded-full bg-red px-4 text-sm font-bold text-white hover:bg-red-dark" type="button" onClick={() => setIsCreateOpen((open) => !open)}>
+              {isCreateOpen ? 'Cerrar formulario' : '+ Añadir actividad'}
+            </button>
+          ) : null}
         </div>
 
         {view === 'month' ? (
@@ -146,18 +265,18 @@ export function CalendarPage() {
       {isCreateOpen ? (
         <PanelCard className="mt-5 p-6">
           <h2 className="m-0 text-xl font-bold text-ink">Añadir actividad</h2>
-          <p className="mt-1 text-sm text-muted">Esta primera versión la añade solo a la sesión actual de la página.</p>
+          <p className="mt-1 text-sm text-muted">La actividad se guardará en el calendario de la escuela.</p>
           <form className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={handleCreateActivity}>
             <label className="grid gap-2 text-sm font-bold text-muted">
               Curso
-              <select className="min-h-11 rounded-soft border border-line bg-white px-3 text-ink" name="course" defaultValue={courses[0]?.title} required>
-                {courses.map((course) => <option key={course.id} value={course.title}>{course.title}</option>)}
+              <select className="min-h-11 rounded-soft border border-line bg-white px-3 text-ink" name="course" defaultValue={courses[0]?.id_curso} required>
+                {courses.map((course) => <option key={course.id_curso} value={course.id_curso}>{course.nombre}</option>)}
               </select>
             </label>
             <label className="grid gap-2 text-sm font-bold text-muted">
               Instructor
-              <select className="min-h-11 rounded-soft border border-line bg-white px-3 text-ink" name="instructor" defaultValue={instructors[0]} required>
-                {instructors.map((instructor) => <option key={instructor} value={instructor}>{instructor}</option>)}
+              <select className="min-h-11 rounded-soft border border-line bg-white px-3 text-ink" name="instructor" defaultValue={instructors[0]?.id_instructor} required>
+                {instructors.map((instructor) => <option key={instructor.id_instructor} value={instructor.id_instructor}>{instructor.nombre}</option>)}
               </select>
             </label>
             <label className="grid gap-2 text-sm font-bold text-muted">
@@ -169,8 +288,9 @@ export function CalendarPage() {
               <input className="min-h-11 rounded-soft border border-line bg-white px-3 text-ink" name="time" type="time" defaultValue="18:30" required />
             </label>
             <div className="md:col-span-2 xl:col-span-4">
-              <button className="min-h-11 rounded-full bg-red px-5 text-sm font-bold text-white hover:bg-red-dark" type="submit">
-                Añadir al calendario
+              {error ? <p className="mb-3 rounded-soft bg-red/10 p-3 text-sm font-bold text-red-dark">{error}</p> : null}
+              <button className="min-h-11 rounded-full bg-red px-5 text-sm font-bold text-white hover:bg-red-dark disabled:cursor-not-allowed disabled:opacity-60" type="submit" disabled={isSaving || courses.length === 0 || instructors.length === 0}>
+                {isSaving ? 'Guardando…' : 'Añadir al calendario'}
               </button>
             </div>
           </form>
@@ -187,16 +307,11 @@ export function CalendarPage() {
               {monthCells(monthDate).map((date) => {
                 const dayActivities = activitiesByDay.get(dateKey(date)) ?? []
                 const outsideMonth = date.getMonth() !== monthDate.getMonth()
-                const beforeMonth = date.getTime() < monthDate.getTime()
 
                 return (
                   <button
                     key={dateKey(date)}
-                    className={`flex flex-col rounded-soft border border-line p-2.5 text-left ${
-                      outsideMonth
-                        ? `aspect-square w-1/4 self-start bg-canvas/45 text-muted ${beforeMonth ? 'justify-self-end' : 'justify-self-start'}`
-                        : 'min-h-40 bg-white/60 text-ink hover:border-gold'
-                    }`}
+                    className={`flex min-h-40 flex-col rounded-soft border border-line p-2.5 text-left ${outsideMonth ? 'bg-canvas/45 text-muted' : 'bg-white/60 text-ink hover:border-gold'}`}
                     type="button"
                     onClick={() => setSelectedDate(date)}
                   >
