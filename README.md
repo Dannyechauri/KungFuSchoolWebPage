@@ -119,16 +119,6 @@ No hay todavía una suite de tests; se decidirá al construir las funcionalidade
 
 El entorno se ha comprobado localmente en macOS. La instalación y ejecución en Windows siguen pendientes de validación real.
 
-### Comprobación automática en GitHub
-
-El workflow `.github/workflows/frontend-checks.yml` pertenece al repositorio web `KungFuSchoolWebPage`. Cuando esté publicado, se ejecutará en cada push y en las propuestas de merge dirigidas a `main`.
-
-Ejecuta `npm ci`, `npm run lint` y `npm run build` por separado en macOS y Windows. Obtiene Node de `.node-version`, con el npm incluido en esa distribución (Node 24.21.0 incluye npm 11.19.0), y muestra ambas versiones en los registros. `.npmrc` comprueba que el entorno cumple `engines`.
-
-Los resultados aparecerán en la pestaña **Actions** del repositorio y en las comprobaciones de la propuesta de merge. Un fallo en un sistema no cancela la comprobación del otro. Este workflow no despliega la aplicación ni hace merges, y no necesita el backend ni una base de datos.
-
-Preparar el archivo localmente no ejecuta comprobaciones en GitHub: hace falta publicar los cambios, con autorización explícita para el push. La primera ejecución remota queda pendiente.
-
 ### Primera prueba manual en Windows
 
 Cuando terminemos la primera página, la probaremos en el PC de sobremesa Windows: instalación con `npm ci`, arranque con `npm run dev`, carga y recarga en el navegador, y las interacciones que tenga esa página. Que la compilación automática pase no sustituye esta prueba de uso.
