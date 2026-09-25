@@ -5,7 +5,7 @@ import { PanelCard } from '../components/PanelCard'
 import { dateKey, formatActivityDate } from '../data/demoActivities'
 import { useAuth } from '../features/auth/useAuth'
 
-type CalendarView = 'month' | 'upcoming'
+type CalendarView = 'month' | 'week' | 'upcoming'
 
 const weekdays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
 
@@ -46,6 +46,34 @@ function addMonths(date: Date, amount: number) {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1)
 }
 
+function startOfWeek(date: Date) {
+  const weekStart = new Date(date)
+  const offset = (weekStart.getDay() + 6) % 7
+  weekStart.setDate(weekStart.getDate() - offset)
+  weekStart.setHours(0, 0, 0, 0)
+  return weekStart
+}
+
+function addWeeks(date: Date, amount: number) {
+  const result = new Date(date)
+  result.setDate(result.getDate() + (amount * 7))
+  return startOfWeek(result)
+}
+
+function weekDays(weekDate: Date) {
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(weekDate)
+    date.setDate(date.getDate() + index)
+    return date
+  })
+}
+
+function formatWeekRange(firstDay: Date, lastDay: Date) {
+  const dayFormatter = new Intl.DateTimeFormat('es-ES', { day: 'numeric' })
+  const monthFormatter = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' })
+  return dayFormatter.format(firstDay) + '–' + dayFormatter.format(lastDay) + ' de ' + monthFormatter.format(lastDay)
+}
+
 function monthCells(monthDate: Date) {
   const firstDay = startOfMonth(monthDate)
   const startOffset = (firstDay.getDay() + 6) % 7
@@ -69,8 +97,9 @@ function requestCalendarData() {
 
 export function CalendarPage() {
   const { user } = useAuth()
-  const [view, setView] = useState<CalendarView>('month')
+  const [view, setView] = useState<CalendarView>('week')
   const [monthDate, setMonthDate] = useState(() => startOfMonth(new Date()))
+  const [weekDate, setWeekDate] = useState(() => startOfWeek(new Date()))
   const [referenceTime] = useState(() => Date.now())
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
@@ -157,6 +186,8 @@ export function CalendarPage() {
     return grouped
   }, [activities])
   const monthTitle = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(monthDate)
+  const weekDates = useMemo(() => weekDays(weekDate), [weekDate])
+  const weekTitle = formatWeekRange(weekDates[0], weekDates[6])
   const selectedActivities = selectedDate ? activitiesByDay.get(dateKey(selectedDate)) ?? [] : []
 
   async function handleCreateActivity(event: FormEvent<HTMLFormElement>) {
@@ -186,7 +217,8 @@ export function CalendarPage() {
       })
       await loadCalendar()
       setMonthDate(startOfMonth(date))
-      setView('month')
+      setWeekDate(startOfWeek(date))
+      setView('week')
       setIsCreateOpen(false)
       form.reset()
     } catch (saveError) {
@@ -235,6 +267,13 @@ export function CalendarPage() {
               Mes
             </button>
             <button
+              className={'min-h-10 rounded-full px-4 text-sm font-bold ' + (view === 'week' ? 'bg-red text-white' : 'text-muted')}
+              type="button"
+              onClick={() => setView('week')}
+            >
+              Semana
+            </button>
+            <button
               className={`min-h-10 rounded-full px-4 text-sm font-bold ${view === 'upcoming' ? 'bg-red text-white' : 'text-muted'}`}
               type="button"
               onClick={() => setView('upcoming')}
@@ -249,13 +288,13 @@ export function CalendarPage() {
           ) : null}
         </div>
 
-        {view === 'month' ? (
+        {view !== 'upcoming' ? (
           <div className="flex items-center gap-3">
-            <button className="size-10 rounded-soft border border-line bg-paper font-bold text-red-dark" type="button" onClick={() => setMonthDate(addMonths(monthDate, -1))} aria-label="Mes anterior">
+            <button className="size-10 rounded-soft border border-line bg-paper font-bold text-red-dark" type="button" onClick={() => view === 'month' ? setMonthDate(addMonths(monthDate, -1)) : setWeekDate(addWeeks(weekDate, -1))} aria-label={view === 'month' ? 'Mes anterior' : 'Semana anterior'}>
               ←
             </button>
-            <strong className="min-w-40 text-center text-base capitalize text-ink">{monthTitle}</strong>
-            <button className="size-10 rounded-soft border border-line bg-paper font-bold text-red-dark" type="button" onClick={() => setMonthDate(addMonths(monthDate, 1))} aria-label="Mes siguiente">
+            <strong className="min-w-56 text-center text-base capitalize text-ink">{view === 'month' ? monthTitle : weekTitle}</strong>
+            <button className="size-10 rounded-soft border border-line bg-paper font-bold text-red-dark" type="button" onClick={() => view === 'month' ? setMonthDate(addMonths(monthDate, 1)) : setWeekDate(addWeeks(weekDate, 1))} aria-label={view === 'month' ? 'Mes siguiente' : 'Semana siguiente'}>
               →
             </button>
           </div>
@@ -324,6 +363,48 @@ export function CalendarPage() {
                       ))}
                     </div>
                   </button>
+                )
+              })}
+            </div>
+          </div>
+        </PanelCard>
+      ) : view === 'week' ? (
+        <PanelCard className="mt-5 w-full overflow-x-auto p-5">
+          <div className="min-w-[66rem]">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="m-0 text-xl font-bold text-ink">Horario semanal</h2>
+                <p className="mt-1 text-sm text-muted">Las actividades se ordenan por su hora de inicio.</p>
+              </div>
+              <span className="rounded-full bg-red/10 px-3 py-1 text-sm font-bold text-red-dark">Semana</span>
+            </div>
+            <div className="grid grid-cols-7 gap-3">
+              {weekDates.map((date) => {
+                const dayActivities = activitiesByDay.get(dateKey(date)) ?? []
+                const isToday = dateKey(date) === dateKey(new Date())
+
+                return (
+                  <article key={dateKey(date)} className={'min-h-80 rounded-soft border p-3 ' + (isToday ? 'border-gold bg-gold/10' : 'border-line bg-white/60')}>
+                    <header className="border-b border-line pb-3">
+                      <span className="block text-xs font-black tracking-[0.12em] text-red uppercase">{new Intl.DateTimeFormat('es-ES', { weekday: 'short' }).format(date)}</span>
+                      <strong className="mt-1 block text-2xl text-ink">{date.getDate()}</strong>
+                    </header>
+                    {dayActivities.length === 0 ? (
+                      <p className="mt-4 text-sm text-muted">Sin actividades</p>
+                    ) : (
+                      <ol className="mt-3 grid gap-2">
+                        {dayActivities.map((activity) => (
+                          <li key={activity.id}>
+                            <button className={'w-full rounded-soft p-3 text-left ' + (activity.active ? 'bg-red/10 text-red-dark hover:bg-red/15' : 'bg-line text-muted line-through')} type="button" onClick={() => setSelectedDate(date)}>
+                              <time className="block text-sm font-black">{activity.time}</time>
+                              <strong className="mt-1 block text-sm leading-5">{activity.title}</strong>
+                              <span className="mt-1 block text-xs leading-4 opacity-80">{activity.topic} · {activity.instructor}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </article>
                 )
               })}
             </div>

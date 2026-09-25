@@ -13,7 +13,7 @@ import { createServer as createViteServer } from 'vite';
 const { Client } = pg;
 const DATABASE_NAME = 'kungfu_school_dev';
 const DATABASE_COMMENT = 'instituto-wushu:development:v1';
-const SEED_VERSION = 'school-data-v2';
+const SEED_VERSION = 'school-data-v3';
 const FRONT_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BACKEND_DIRECTORY = path.resolve(FRONT_DIRECTORY, '../KungFuBackendService/backend-service');
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
@@ -174,6 +174,12 @@ function dateTimeAt(dayOffset, hour, minute = 0) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
 }
 
+function dateTimeOnWeekday(weekOffset, weekday, hour, minute = 0) {
+  const today = new Date();
+  const currentWeekday = (today.getDay() + 6) % 7;
+  return dateTimeAt((weekOffset * 7) + weekday - currentWeekday, hour, minute);
+}
+
 
 function birthdayFor(index) {
   const year = 1968 + ((index * 3) % 45);
@@ -292,29 +298,43 @@ async function seedDatabase(configuration) {
         for (const formName of grade[3].slice(0, Math.min(grade[3].length, 2 + (index % 4)))) await client.query('INSERT INTO alumno_forma (id_alumno, id_forma, fecha_aprendida) VALUES ($1, $2, $3)', [result.rows[0].id_alumno, formIds.get(formName), joinedAtFor(Math.max(0, index - 2))]);
       }
 
+      // El esquema actual no distingue todavía clases recurrentes y cursos.
+      // Estas sesiones individuales representan la agenda de las próximas cuatro semanas.
       const courses = [
-        ['Clase regular · mañana', 'Entrenamiento', 'Sesión regular de mañana para trabajo técnico general.'], ['Clase regular · tarde', 'Entrenamiento', 'Sesión regular de tarde para trabajo técnico general.'],
-        ['Técnica de mano vacía', 'Técnica', 'Trabajo de estructura, desplazamiento y aplicación de formas sin armas.'], ['Práctica con armas', 'Armas', 'Sesión de seguridad y repaso técnico con armas de entrenamiento.'],
-        ['Preparación física', 'Preparación física', 'Movilidad, fuerza y acondicionamiento para la práctica.'], ['Práctica supervisada', 'Entrenamiento', 'Espacio guiado para practicar y recibir correcciones.'],
-        ['Iniciación al Wu-shu', 'Iniciación', 'Sesión de acogida para alumnado que empieza.'], ['Entrenamiento avanzado', 'Avanzado', 'Trabajo técnico para alumnado con experiencia.'],
+        ['Clase diaria · mañana', 'Clase diaria', 'Clase regular de mañana para práctica técnica general.'],
+        ['Clase diaria · tarde', 'Clase diaria', 'Clase regular de tarde para práctica técnica general.'],
+        ['Formas y técnica', 'Formas y técnica', 'Estudio de formas y técnica de los estilos impartidos por la escuela.'],
+        ['Preparación física para estilos', 'Preparación física', 'Movilidad, fuerza y acondicionamiento aplicados a la práctica de los estilos.'],
+        ['Combate Sanda', 'Sanda', 'Trabajo de distancia, combate y preparación específica de Sanda.'],
+        ['Taller de Shuai Jiao', 'Especialización', 'Actividad puntual de introducción a la lucha tradicional china.'],
+        ['Introducción al Taijiquan estilo Chen', 'Especialización', 'Sesión de aproximación a un estilo que no forma parte del programa habitual.'],
+        ['Defensa personal', 'Especialización', 'Taller práctico de recursos básicos de defensa personal.'],
       ];
       const courseIds = [];
       for (const [name, topic, description] of courses) {
         const result = await client.query('INSERT INTO cursos (nombre, tema, descripcion) VALUES ($1, $2, $3) RETURNING id_curso', [name, topic, description]);
         courseIds.push(result.rows[0].id_curso);
       }
-      const sessions = [
-        [0, 0, -7, 9, 30, true], [1, 1, -5, 18, 30, true], [2, 2, -3, 19, 0, true], [3, 3, -1, 18, 0, true],
-        [4, 4, 1, 17, 30, true], [5, 5, 2, 19, 0, true], [6, 6, 3, 18, 0, true], [7, 7, 4, 19, 15, true],
-        [0, 8, 5, 9, 30, true], [1, 9, 6, 18, 30, true], [2, 0, 7, 19, 0, true], [3, 1, 8, 18, 0, true],
-        [4, 2, 9, 17, 30, true], [5, 3, 10, 19, 0, true], [6, 4, 11, 18, 0, true], [7, 5, 12, 19, 15, true],
-        [0, 6, 14, 9, 30, true], [1, 7, 15, 18, 30, true], [2, 8, 16, 19, 0, true], [3, 9, 17, 18, 0, true],
-        [4, 0, 19, 17, 30, true], [5, 1, 21, 19, 0, true], [6, 2, 22, 18, 0, true], [7, 3, 24, 19, 15, true],
-        [3, 9, 26, 18, 0, false], [5, 5, 28, 19, 0, true],
+
+      const weeklySessions = [
+        [0, 0, 0, 9, 30], [0, 0, 1, 9, 30], [0, 0, 2, 9, 30], [0, 0, 3, 9, 30], [0, 0, 4, 9, 30],
+        [1, 1, 0, 18, 30], [1, 1, 1, 18, 30], [1, 1, 2, 18, 30], [1, 1, 3, 18, 30], [1, 1, 4, 18, 30],
+        [2, 2, 0, 17, 0], [2, 3, 2, 17, 0], [3, 4, 1, 17, 30], [3, 4, 3, 17, 30], [4, 5, 3, 19, 0],
       ];
+      const sessions = [];
+      for (let weekOffset = 0; weekOffset < 4; weekOffset += 1) {
+        for (const [courseIndex, instructorIndex, weekday, hour, minute] of weeklySessions) {
+          sessions.push([courseIndex, instructorIndex, dateTimeOnWeekday(weekOffset, weekday, hour, minute), true]);
+        }
+      }
+      sessions.push([5, 5, dateTimeOnWeekday(1, 5, 10, 0), true]);
+      sessions.push([6, 2, dateTimeOnWeekday(2, 5, 10, 0), true]);
+      sessions.push([7, 7, dateTimeOnWeekday(3, 5, 10, 0), true]);
+      sessions.push([5, 5, dateTimeOnWeekday(3, 5, 10, 0), false]);
+
       const scheduledCourseIds = [];
-      for (const [courseIndex, instructorIndex, offset, hour, minute, active] of sessions) {
-        const result = await client.query('INSERT INTO cursos_agendados (id_curso, id_instructor, fecha_hora, activo) VALUES ($1, $2, $3, $4) RETURNING id_curso_agendado', [courseIds[courseIndex], instructorIds[instructorIndex], dateTimeAt(offset, hour, minute), active]);
+      for (const [courseIndex, instructorIndex, dateTime, active] of sessions) {
+        const result = await client.query('INSERT INTO cursos_agendados (id_curso, id_instructor, fecha_hora, activo) VALUES ($1, $2, $3, $4) RETURNING id_curso_agendado', [courseIds[courseIndex], instructorIds[instructorIndex], dateTime, active]);
         scheduledCourseIds.push(result.rows[0].id_curso_agendado);
       }
       for (const [sessionIndex, scheduledCourseId] of scheduledCourseIds.entries()) {
@@ -322,7 +342,7 @@ async function seedDatabase(configuration) {
       }
       await client.query('INSERT INTO dev_support.seed_state (version) VALUES ($1)', [SEED_VERSION]);
       await client.query('COMMIT');
-      console.log('Datos de demostración creados: 50 alumnos, 10 instructores, 8 estilos, 70 formas, grados y calendario.');
+      console.log('Datos de demostración creados: 50 alumnos, 10 instructores, 8 estilos, 70 formas y una agenda semanal de prueba.');
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;

@@ -54,7 +54,7 @@ Para borrar únicamente esta base local marcada por el proyecto y crearla de nue
 
 Este comando no puede eliminar una base con el mismo nombre que no haya sido creada por el lanzador.
 
-Los datos iniciales incluyen un administrador, 50 alumnos, 10 instructores, 8 estilos, 70 formas, grados con sus formas requeridas, ocho tipos de curso y actividades repartidas entre días recientes y las cuatro semanas siguientes. La cuenta de demostración es `admin@wushu.test` con contraseña `WushuDemo2026!`; es exclusiva para esta base local y ficticia.
+Los datos iniciales incluyen un administrador, 50 alumnos, 10 instructores, 8 estilos, 70 formas, grados con sus formas requeridas, clases diarias, formas y técnica, preparación física, Sanda y especializaciones programadas durante las cuatro semanas siguientes. La cuenta de demostración es `admin@wushu.test` con contraseña `WushuDemo2026!`; es exclusiva para esta base local y ficticia.
 
 Hace falta instalar una vez PostgreSQL local y Java 21 además de Node. En macOS el usuario por defecto de PostgreSQL es el mismo usuario del sistema; en Windows es normalmente `postgres`. Si ese usuario tiene contraseña, copiar `.env.example` como `.env.dev.local` y completar `DEV_DB_USER` y `DEV_DB_PASSWORD`. Este archivo está ignorado por Git. Se puede indicar `DEV_JAVA_HOME` en ese mismo archivo si Java 21 no está disponible desde la terminal.
 
