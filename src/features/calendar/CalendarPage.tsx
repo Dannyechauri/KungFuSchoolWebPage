@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router'
 import { PanelCard } from '../../components/PanelCard'
 import { SelectField } from '../../components/SelectField'
@@ -42,6 +43,22 @@ const weekdays = [
 ]
 
 const buttonClass = 'min-h-10 rounded-full px-4 text-sm font-bold'
+const courseColors = [
+  { surface: 'bg-red/10', border: 'border-red/25', text: 'text-red-dark', marker: 'bg-red' },
+  { surface: 'bg-gold/20', border: 'border-gold/50', text: 'text-ink', marker: 'bg-gold' },
+  { surface: 'bg-green-100', border: 'border-green-200', text: 'text-green-900', marker: 'bg-green-600' },
+  { surface: 'bg-blue-100', border: 'border-blue-200', text: 'text-blue-900', marker: 'bg-blue-600' },
+  { surface: 'bg-purple-100', border: 'border-purple-200', text: 'text-purple-900', marker: 'bg-purple-600' },
+  { surface: 'bg-orange-100', border: 'border-orange-200', text: 'text-orange-900', marker: 'bg-orange-600' },
+  { surface: 'bg-teal-100', border: 'border-teal-200', text: 'text-teal-900', marker: 'bg-teal-600' },
+]
+
+function courseColor(courseId: CalendarEvent['id_curso']) {
+  let hash = 2_166_136_261
+  for (const character of entityKey(courseId)) hash = Math.imul(hash ^ character.charCodeAt(0), 16_777_619)
+  return courseColors[(hash >>> 0) % courseColors.length]!
+}
+
 function eventTimeRange(event: CalendarEvent) {
   const startDate = event.fecha_hora.slice(0, 10)
   const endDate = event.fecha_hora_fin.slice(0, 10)
@@ -88,19 +105,61 @@ function layoutDayEvents(events: CalendarEvent[], day: string): PositionedEvent[
   return positioned
 }
 
-function CalendarEventCard({ event, onSelect, compact = false }: { event: CalendarEvent; onSelect: () => void; compact?: boolean }) {
+function tooltipPosition(button: HTMLButtonElement) {
+  const rect = button.getBoundingClientRect()
+  const width = 280
+  const height = 150
+  const left = rect.right + width + 12 < window.innerWidth ? rect.right + 8 : Math.max(8, rect.left - width - 8)
+  const top = Math.max(8, Math.min(rect.top, window.innerHeight - height - 8))
+  return { left, top }
+}
+
+function CalendarEventCard({ event, onSelect, compact = false, showTooltip = false }: { event: CalendarEvent; onSelect: () => void; compact?: boolean; showTooltip?: boolean }) {
+  const [tooltip, setTooltip] = useState<{ left: number; top: number } | null>(null)
+  const color = courseColor(event.id_curso)
+  const updateTooltip = (button: HTMLButtonElement) => {
+    const position = tooltipPosition(button)
+    setTooltip((current) => current?.left === position.left && current.top === position.top ? current : position)
+  }
+  const openEvent = () => {
+    setTooltip(null)
+    onSelect()
+  }
+
   return (
-    <button
-      className={`w-full rounded-soft border p-3 text-left ${event.activo ? 'border-red/20 bg-red/10 text-red-dark hover:bg-red/15' : 'border-line bg-line/60 text-muted'}`}
-      type="button"
-      onClick={onSelect}
-      aria-label={`${event.curso_nombre}, ${eventTimeRange(event)}, ${eventRoom(event)}`}
-    >
-      <span className="block truncate text-xs font-black">{eventTimeRange(event)}</span>
-      <strong className={`mt-1 block leading-5 ${compact ? 'truncate text-xs' : 'text-sm'}`}>{event.curso_nombre}</strong>
-      {!compact ? <span className="mt-1 block truncate text-xs opacity-80">{eventRoom(event)} · {event.instructor_nombre}</span> : null}
-      {!event.activo ? <span className="mt-1 block text-[0.68rem] font-bold uppercase tracking-wide">Cancelada</span> : null}
-    </button>
+    <>
+      <button
+        className={`w-full rounded-soft border p-3 text-left ${color.border} ${color.surface} ${color.text} ${event.activo ? 'hover:brightness-95' : 'opacity-70'}`}
+        type="button"
+        onClick={openEvent}
+        onMouseEnter={(mouseEvent) => { if (showTooltip) updateTooltip(mouseEvent.currentTarget) }}
+        onMouseMove={(mouseEvent) => { if (showTooltip && tooltip) updateTooltip(mouseEvent.currentTarget) }}
+        onMouseLeave={() => setTooltip(null)}
+        onFocus={(focusEvent) => { if (showTooltip) updateTooltip(focusEvent.currentTarget) }}
+        onBlur={() => setTooltip(null)}
+        aria-label={`${event.curso_nombre}, ${eventTimeRange(event)}, ${eventRoom(event)}`}
+        aria-describedby={tooltip && showTooltip ? `event-tooltip-${entityKey(event.id_curso_agendado)}` : undefined}
+      >
+        <span className={`block truncate text-xs font-black ${!event.activo ? 'line-through' : ''}`}>{eventTimeRange(event)}</span>
+        <strong className={`mt-1 block leading-5 ${compact ? 'truncate text-xs' : 'text-sm'} ${!event.activo ? 'line-through' : ''}`}>{event.curso_nombre}</strong>
+        {!compact ? <span className="mt-1 block truncate text-xs opacity-80">{eventRoom(event)} · {event.instructor_nombre}</span> : null}
+        {!event.activo ? <span className="mt-1 block text-[0.68rem] font-bold uppercase tracking-wide">Cancelada</span> : null}
+      </button>
+      {tooltip && showTooltip ? createPortal(
+        <div
+          id={`event-tooltip-${entityKey(event.id_curso_agendado)}`}
+          className={`pointer-events-none fixed z-50 w-70 rounded-panel border p-3 text-sm shadow-xl ${color.border} ${color.surface} ${color.text}`}
+          style={tooltip}
+          role="tooltip"
+        >
+          <strong className="block">{event.curso_nombre}</strong>
+          <span className="mt-1 block">{eventTimeRange(event)} · {eventRoom(event)}</span>
+          <span className="mt-1 block">{event.instructor_nombre}</span>
+          <span className="mt-1 block text-xs opacity-80">{event.curso_tema} · {event.tipo_curso === 'HABITUAL' ? 'Habitual' : 'Especial'}</span>
+        </div>,
+        document.body,
+      ) : null}
+    </>
   )
 }
 
@@ -133,7 +192,7 @@ function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent }: {
           </div>
         </section>
       ) : null}
-      <div className="overflow-x-auto rounded-soft border border-line bg-white/70">
+      <div className="overflow-x-auto overflow-y-clip rounded-soft border border-line bg-white/70">
         <div className="min-w-[76rem]">
           <div className="grid grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] border-b border-line bg-paper/70">
             <div />
@@ -168,7 +227,7 @@ function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent }: {
                     }
                     return (
                       <div key={entityKey(event.id_curso_agendado)} className="absolute" style={style}>
-                        <CalendarEventCard event={event} onSelect={() => onSelectEvent(event)} compact />
+                        <CalendarEventCard event={event} onSelect={() => onSelectEvent(event)} compact showTooltip={laneCount > 1} />
                       </div>
                     )
                   })}
@@ -196,6 +255,7 @@ export function CalendarPage() {
   const [weekDate, setWeekDate] = useState(() => startOfWeek(dateFromKey(restoredCalendarState?.weekDate ?? initialToday)))
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(restoredCalendarState?.roomId ?? null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
   const [rooms, setRooms] = useState<CalendarRoom[]>([])
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null)
@@ -263,6 +323,8 @@ export function CalendarPage() {
   }, [range, selectedRoomId, eventsRequestKey])
 
   function openManagement(event?: CalendarEvent) {
+    setSelectedDate(null)
+    setSelectedEvent(null)
     const calendarState: CalendarPageState = {
       view,
       monthDate: dateKey(monthDate),
@@ -295,34 +357,28 @@ export function CalendarPage() {
         </PanelCard>
       ) : null}
 
-      <div className="mt-7 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex w-fit rounded-full border border-line bg-paper p-1" role="group" aria-label="Vista de calendario">
-            {([['month', 'Mes'], ['week', 'Semana'], ['upcoming', 'Próximas']] as const).map(([value, label]) => (
-              <button key={value} className={`${buttonClass} ${view === value ? 'bg-red text-white' : 'text-muted'}`} type="button" onClick={() => setView(value)} aria-pressed={view === value}>{label}</button>
-            ))}
-          </div>
-          {canManage ? <button className={`${buttonClass} bg-red text-white hover:bg-red-dark`} type="button" onClick={() => openManagement()}>Gestionar agenda</button> : null}
+      <div className="mt-7 flex flex-wrap items-center gap-3">
+        <div className="inline-flex w-fit rounded-full border border-line bg-paper p-1" role="group" aria-label="Vista de calendario">
+          {([['month', 'Mes'], ['week', 'Semana'], ['upcoming', 'Próximas']] as const).map(([value, label]) => (
+            <button key={value} className={`${buttonClass} ${view === value ? 'bg-red text-white' : 'text-muted'}`} type="button" onClick={() => setView(value)} aria-pressed={view === value}>{label}</button>
+          ))}
         </div>
-
+        {canManage ? <button className={`${buttonClass} bg-red text-white hover:bg-red-dark`} type="button" onClick={() => openManagement()}>Gestionar agenda</button> : null}
+        <label className="flex items-center gap-2 text-sm font-bold text-muted">
+          Filtrar por sala
+          <SelectField wrapperClassName="w-48 shrink-0" value={selectedRoomId ?? ''} onChange={(event) => setSelectedRoomId(event.target.value || null)}>
+            <option value="">Todas las salas</option>
+            {rooms.map((room) => <option key={entityKey(room.id_sala)} value={entityKey(room.id_sala)}>{room.nombre}{room.activo ? '' : ' · Inactiva'}</option>)}
+          </SelectField>
+        </label>
+        {eventsLoading ? <span className="text-sm text-muted" role="status" aria-live="polite">Actualizando…</span> : null}
         {view !== 'upcoming' ? (
-          <div className="flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-3">
             <button className="size-10 rounded-soft border border-line bg-paper font-bold text-red-dark" type="button" onClick={() => view === 'month' ? setMonthDate((date) => addMonths(date, -1)) : setWeekDate((date) => addDays(date, -7))} aria-label={view === 'month' ? 'Mes anterior' : 'Semana anterior'}>←</button>
             <strong className="min-w-56 text-center text-base capitalize text-ink">{view === 'month' ? monthTitle : weekTitle}</strong>
             <button className="size-10 rounded-soft border border-line bg-paper font-bold text-red-dark" type="button" onClick={() => view === 'month' ? setMonthDate((date) => addMonths(date, 1)) : setWeekDate((date) => addDays(date, 7))} aria-label={view === 'month' ? 'Mes siguiente' : 'Semana siguiente'}>→</button>
           </div>
         ) : null}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <label className="flex flex-col items-start gap-2 text-sm font-bold text-muted sm:flex-row sm:items-center sm:gap-3">
-          Filtrar por sala
-          <SelectField wrapperClassName="w-48 shrink-0" value={selectedRoomId ?? ''} onChange={(event) => setSelectedRoomId(event.target.value || null)}>
-              <option value="">Todas las salas</option>
-              {rooms.map((room) => <option key={entityKey(room.id_sala)} value={entityKey(room.id_sala)}>{room.nombre}{room.activo ? '' : ' · Inactiva'}</option>)}
-          </SelectField>
-        </label>
-        {eventsLoading ? <span className="text-sm text-muted" role="status" aria-live="polite">Actualizando…</span> : null}
       </div>
 
       {eventsError ? (
@@ -338,10 +394,10 @@ export function CalendarPage() {
             <div><h2 className="m-0 text-xl font-bold text-ink">Horario semanal</h2><p className="mt-1 text-sm text-muted">Los bloques simultáneos se distribuyen en columnas paralelas.</p></div>
             <span className="rounded-full bg-red/10 px-3 py-1 text-sm font-bold text-red-dark">{events.length} actividades</span>
           </div>
-          {eventsLoading && !events.length ? <p className="text-sm text-muted">Cargando actividades…</p> : <WeekSchedule events={events} weekKeys={weekKeys} onSelectDay={setSelectedDate} onSelectEvent={(event) => { setSelectedDate(event.fecha_hora.slice(0, 10)) }} />}
+          {eventsLoading && !events.length ? <p className="text-sm text-muted">Cargando actividades…</p> : <WeekSchedule events={events} weekKeys={weekKeys} onSelectDay={setSelectedDate} onSelectEvent={setSelectedEvent} />}
         </PanelCard>
       ) : view === 'month' ? (
-        <PanelCard className="mt-5 w-full overflow-x-auto p-4 md:p-5">
+        <PanelCard className="mt-5 w-full overflow-x-auto overflow-y-clip p-4 md:p-5">
           <div className="min-w-[58rem]">
             <div className="mb-2 grid grid-cols-7 gap-2 text-center text-sm font-bold text-muted">{weekdays.map((day) => <span key={day.value}>{day.label}</span>)}</div>
             <div className="grid grid-cols-7 gap-2">
@@ -353,7 +409,7 @@ export function CalendarPage() {
                     <button className="font-bold hover:text-red-dark" type="button" onClick={() => setSelectedDate(day)}>{formatCalendarDate(day, { day: 'numeric' })}</button>
                     <div className="mt-2 grid gap-1">
                       {dayActivities.slice(0, 3).map((activity) => (
-                        <button key={entityKey(activity.id_curso_agendado)} className={`truncate rounded-full px-2 py-1 text-left text-[0.68rem] font-bold ${activity.activo ? 'bg-red/10 text-red-dark' : 'bg-line text-muted line-through'}`} type="button" onClick={() => setSelectedDate(day)}>
+                        <button key={entityKey(activity.id_curso_agendado)} className={`truncate rounded-full border px-2 py-1 text-left text-[0.68rem] font-bold ${courseColor(activity.id_curso).border} ${activity.activo ? `${courseColor(activity.id_curso).surface} ${courseColor(activity.id_curso).text}` : 'bg-line text-muted line-through'}`} type="button" onClick={() => setSelectedEvent(activity)}>
                           {formatTime(activity.fecha_hora)} {activity.curso_nombre} · {eventRoom(activity)}
                         </button>
                       ))}
@@ -375,9 +431,11 @@ export function CalendarPage() {
             <ul className="mt-4 grid divide-y divide-line">
               {upcomingEvents.map((event) => (
                 <li key={entityKey(event.id_curso_agendado)} className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
-                  <button className="text-left" type="button" onClick={() => setSelectedDate(event.fecha_hora.slice(0, 10))}>
-                    <strong className="block text-base text-ink">{event.curso_nombre}</strong>
+                  <button className="flex items-start gap-3 text-left" type="button" onClick={() => setSelectedEvent(event)}>
+                    <span className={`mt-1.5 size-3 shrink-0 rounded-full ${courseColor(event.id_curso).marker}`} aria-hidden="true" />
+                    <span><strong className="block text-base text-ink">{event.curso_nombre}</strong>
                     <span className="mt-1 block text-sm text-muted">{event.curso_tema} · {event.instructor_nombre} · {eventRoom(event)}</span>
+                    </span>
                   </button>
                   <time className="shrink-0 text-sm font-bold text-red-dark">{formatCalendarDate(event.fecha_hora.slice(0, 10), { day: 'numeric', month: 'short' })} · {eventTimeRange(event)}</time>
                 </li>
@@ -398,25 +456,52 @@ export function CalendarPage() {
               {!activitiesForSelectedDate.length ? <p className="mt-5 text-sm text-muted">No hay actividades para este día y filtro.</p> : (
                 <div className="mt-5 grid gap-3">
                   {activitiesForSelectedDate.map((event) => (
-                    <article key={entityKey(event.id_curso_agendado)} className="rounded-soft border border-line bg-white/70 p-4">
+                    <article key={entityKey(event.id_curso_agendado)} className={`rounded-soft border ${courseColor(event.id_curso).border} ${courseColor(event.id_curso).surface} p-4`}>
                       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                         <div>
-                          <h3 className="m-0 text-base font-bold text-ink">{event.curso_nombre}</h3>
+                          <button className="text-left" type="button" onClick={() => { setSelectedDate(null); setSelectedEvent(event) }}><h3 className="m-0 text-base font-bold text-ink">{event.curso_nombre}</h3></button>
                           <p className="mt-1 text-sm text-muted">{event.curso_tema} · {event.instructor_nombre}</p>
                           <p className="mt-1 text-sm font-bold text-red-dark">{eventTimeRange(event)} · {eventRoom(event)}</p>
                           <p className="mt-1 text-xs text-muted">{event.tipo_curso === 'HABITUAL' ? 'Clase habitual' : 'Curso especial'}{event.id_horario_recurrente ? ' · Regla semanal' : ''}{event.modificado_manualmente ? ' · Sesión modificada' : ''}</p>
                         </div>
                         <span className={`w-fit rounded-full px-3 py-1 text-xs font-bold ${event.activo ? 'bg-green-100 text-green-800' : 'bg-line text-muted'}`}>{event.activo ? 'Activa' : 'Cancelada'}</span>
                       </div>
-                      {canManage && event.activo ? (
-                        <div className="mt-4 flex flex-wrap gap-3 border-t border-line pt-3">
-                          <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => openManagement(event)}>Gestionar sesión</button>
-                        </div>
-                      ) : null}
                     </article>
                   ))}
                 </div>
               )}
+            </PanelCard>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedEvent ? (
+        <div className="fixed inset-0 z-30 grid place-items-center bg-ink/55 p-4" role="presentation" onClick={() => setSelectedEvent(null)}>
+          <div className="w-full max-w-2xl" role="dialog" aria-modal="true" aria-labelledby="selected-event-title" onClick={(event) => event.stopPropagation()}>
+            <PanelCard className={`max-h-[88vh] overflow-y-auto border-t-4 p-5 shadow-xl md:p-6 ${courseColor(selectedEvent.id_curso).border}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="m-0 text-xs font-black uppercase tracking-[0.12em] text-red">Detalle de la actividad</p>
+                  <h2 id="selected-event-title" className="mt-2 text-2xl font-bold text-ink">{selectedEvent.curso_nombre}</h2>
+                </div>
+                <button className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-white text-lg font-bold text-red-dark" type="button" onClick={() => setSelectedEvent(null)} aria-label="Cerrar detalle de la actividad">×</button>
+              </div>
+              <div className="mt-5 grid gap-3 text-sm">
+                <p className="m-0 text-base font-bold text-red-dark">{eventTimeRange(selectedEvent)}</p>
+                <p className="m-0 text-muted">{selectedEvent.curso_tema}</p>
+                {selectedEvent.curso_descripcion ? <p className="m-0 leading-6 text-muted">{selectedEvent.curso_descripcion}</p> : null}
+                <dl className="grid gap-3 rounded-soft border border-line bg-white/60 p-4 sm:grid-cols-2">
+                  <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Instructor</dt><dd className="mt-1 font-semibold text-ink">{selectedEvent.instructor_nombre}</dd></div>
+                  <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Sala</dt><dd className="mt-1 font-semibold text-ink">{eventRoom(selectedEvent)}</dd></div>
+                  <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Tipo</dt><dd className="mt-1 font-semibold text-ink">{selectedEvent.tipo_curso === 'HABITUAL' ? 'Clase habitual' : 'Curso especial'}</dd></div>
+                  <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Estado</dt><dd className="mt-1 font-semibold text-ink">{selectedEvent.activo ? 'Activa' : 'Cancelada'}</dd></div>
+                  {selectedEvent.id_horario_recurrente ? <div className="sm:col-span-2"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Origen</dt><dd className="mt-1 font-semibold text-ink">{selectedEvent.modificado_manualmente ? 'Ocurrencia de horario habitual, modificada individualmente' : 'Ocurrencia de horario habitual'}</dd></div> : null}
+                </dl>
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3 border-t border-line pt-4">
+                {canManage && selectedEvent.activo ? <button className={`${buttonClass} bg-red text-white`} type="button" onClick={() => openManagement(selectedEvent)}>Gestionar sesión</button> : null}
+                <button className={`${buttonClass} border border-line text-muted`} type="button" onClick={() => setSelectedEvent(null)}>Cerrar</button>
+              </div>
             </PanelCard>
           </div>
         </div>
