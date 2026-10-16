@@ -2,7 +2,7 @@
 
 Aplicación interna para maestros, instructores y administradores. Construiremos sus pantallas paso a paso.
 
-Por ahora solo existe la base de desarrollo y una pantalla inicial. El front todavía no tiene autenticación ni consume datos del backend, aunque el entorno local ya los prepara para las siguientes pantallas.
+El front incluye inicio de sesión, resumen de la escuela y una agenda de clases. El entorno local prepara una base PostgreSQL de demostración y arranca el backend Node junto con el front.
 
 ## Stack
 
@@ -16,7 +16,7 @@ React Router se mantiene en la versión 7 elegida para esta base. Actualizar Nod
 
 ## Entorno común para macOS y Windows
 
-Las versiones de referencia son **Node.js 24.21.0 LTS** y **npm 11.19.0**. Se registran en `.node-version` y `packageManager` de `package.json`, respectivamente. `engines` admite Node desde 24.21.0 hasta antes de 25, y npm desde 11.19.0 hasta antes de 12.
+Las versiones de referencia son **Node.js 24.21.0 LTS** y **npm 11.19.0** tanto para el front como para el backend. Se registran en `.node-version` y `packageManager` de cada repositorio. `engines` admite Node desde 24.21.0 hasta antes de 25, y npm desde 11.19.0 hasta antes de 12.
 
 `engines` declara las versiones compatibles y `.npmrc` hace que una instalación con versiones incompatibles se detenga con `EBADENGINE`. `.node-version` y `packageManager` documentan el entorno; no instalan ni seleccionan por sí solos Node o npm.
 
@@ -33,20 +33,21 @@ Si la terminal aún muestra la versión anterior, revisar `type -a node npm` en 
 
 ## Arranque del entorno de desarrollo
 
-Abrir una terminal en `KungFuSchoolWebPage`, la carpeta que contiene este `package.json`. Si se parte del repositorio padre, ejecutar primero `cd KungFuSchoolWebPage`.
+Instalar las dependencias una vez en cada submódulo. Abrir una terminal en `KungFuSchoolWebPage` y ejecutar:
 
 Los comandos son los mismos en macOS y Windows:
 
 ```text
 npm ci
-npm run dev
 ```
+
+Repetir `npm ci` desde `KungFuBackendService/backend-service`. Después, desde `KungFuSchoolWebPage`, ejecutar `npm run dev`.
 
 `npm ci` instala las versiones del `package-lock.json` sin actualizarlo. Ejecutarlo en la primera instalación y cuando cambie ese archivo; no hace falta reinstalar en cada arranque. Para añadir o actualizar una dependencia de forma deliberada se usa `npm install` y se revisan los cambios del lockfile.
 
 Cada ordenador debe instalar sus propias dependencias. No copiar `node_modules/` entre macOS y Windows: algunas herramientas contienen binarios distintos para cada plataforma.
 
-`npm run dev` prepara el entorno completo: comprueba que los puertos 8000 y 8080 estén libres, crea si hace falta la base PostgreSQL local `kungfu_school_dev`, arranca el backend, aplica sus migraciones y carga datos de demostración completos solo la primera vez. Después arranca el front en http://127.0.0.1:8000/.
+`npm run dev` prepara el entorno completo: comprueba que los puertos 8000 y 8080 estén libres, crea si hace falta la base PostgreSQL local `kungfu_school_dev`, arranca el backend Node, aplica las migraciones y carga datos de demostración completos solo la primera vez. Después arranca el front en http://127.0.0.1:8000/.
 
 La base queda en el ordenador entre arranques, también los cambios que se hagan durante las pruebas. El lanzador únicamente acepta una base local y se niega a adoptar una base con ese nombre si no fue creada por él. No borra ni reinicializa datos.
 
@@ -54,9 +55,9 @@ Para borrar únicamente esta base local marcada por el proyecto y crearla de nue
 
 Este comando no puede eliminar una base con el mismo nombre que no haya sido creada por el lanzador.
 
-Los datos iniciales incluyen un administrador, 50 alumnos, 10 instructores, 8 estilos, 70 formas, grados con sus formas requeridas, clases diarias, formas y técnica, preparación física, Sanda y especializaciones programadas durante las cuatro semanas siguientes. La cuenta de demostración es `admin@wushu.test` con contraseña `WushuDemo2026!`; es exclusiva para esta base local y ficticia.
+Los datos iniciales incluyen un administrador, 50 alumnos, 10 instructores, 3 salas, 8 estilos, 70 formas, grados con sus formas requeridas, clases habituales con duración (incluidas clases simultáneas en salas distintas), cursos especiales de fin de semana y una actividad cancelada. La cuenta de demostración es `admin@wushu.test` con contraseña `WushuDemo2026!`; es exclusiva para esta base local y ficticia.
 
-Hace falta instalar una vez PostgreSQL local y Java 21 además de Node. En macOS el usuario por defecto de PostgreSQL es el mismo usuario del sistema; en Windows es normalmente `postgres`. Si ese usuario tiene contraseña, copiar `.env.example` como `.env.dev.local` y completar `DEV_DB_USER` y `DEV_DB_PASSWORD`. Este archivo está ignorado por Git. Se puede indicar `DEV_JAVA_HOME` en ese mismo archivo si Java 21 no está disponible desde la terminal.
+Hace falta instalar una vez PostgreSQL local además de Node. En macOS el usuario por defecto de PostgreSQL es el mismo usuario del sistema; en Windows es normalmente `postgres`. Si ese usuario tiene contraseña, copiar `.env.example` como `.env.dev.local` y completar `DEV_DB_USER` y `DEV_DB_PASSWORD`. Este archivo está ignorado por Git.
 
 Para revisar únicamente la maquetación, sin arrancar PostgreSQL ni el backend:
 
@@ -82,7 +83,7 @@ Ante `EBADENGINE`, comprobar las versiones indicadas por el error e instalar el 
 - Los scripts de npm deben funcionar en ambos sistemas. Evitar comandos exclusivos de Bash o PowerShell; si hace falta automatización adicional, escribirla en Node y comprobarla en ambos sistemas.
 - `.gitattributes` normaliza los archivos de texto a LF y reserva CRLF para posibles lanzadores `.bat` o `.cmd`. No hace falta cambiar la configuración global de Git.
 - Usar exactamente las mismas mayúsculas y minúsculas en los nombres de archivo y sus imports.
-- Las credenciales de PostgreSQL usadas por el lanzador local se guardan en `.env.dev.local`. El `.env.local` del front no configura automáticamente Spring Boot.
+- Las credenciales de PostgreSQL usadas por el lanzador local se guardan en `.env.dev.local`. El lanzador entrega las variables al backend Node; no se guardan en el front ni en variables `VITE_*`.
 
 ## Primeros archivos
 
@@ -92,7 +93,7 @@ El recorrido de arranque es `index.html` → `src/main.tsx` → `src/App.tsx`.
 | --- | --- |
 | `index.html` | Documento HTML con el contenedor `root` y la entrada de JavaScript. |
 | `src/main.tsx` | Monta React en `root` y envuelve la aplicación con `StrictMode` y `BrowserRouter`. |
-| `src/App.tsx` | Componente raíz; por ahora muestra una pantalla mínima. |
+| `src/App.tsx` | Componente raíz y rutas del front. |
 | `src/index.css` | Importa Tailwind. Las clases se usan en `className` de los componentes. |
 | `vite.config.ts` | Activa React y Tailwind y configura el servidor local. |
 | `tsconfig*.json` | Configura TypeScript para la aplicación y las herramientas. |
@@ -115,7 +116,7 @@ npm run build
 npm run preview
 ```
 
-No hay todavía una suite de tests; se decidirá al construir las funcionalidades.
+Las pruebas del backend están en su propio repositorio. Desde `KungFuBackendService/backend-service`, ejecutar `npm run typecheck`, `npm run lint` y `npm test`.
 
 El entorno se ha comprobado localmente en macOS. La instalación y ejecución en Windows siguen pendientes de validación real.
 

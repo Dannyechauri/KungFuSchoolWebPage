@@ -4,7 +4,7 @@ import { userInfo } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 
 import bcrypt from 'bcryptjs';
 import pg from 'pg';
@@ -13,7 +13,7 @@ import { createServer as createViteServer } from 'vite';
 const { Client } = pg;
 const DATABASE_NAME = 'kungfu_school_dev';
 const DATABASE_COMMENT = 'instituto-wushu:development:v1';
-const SEED_VERSION = 'school-data-v3';
+const SEED_VERSION = 'school-data-v5-multi-room-schedule';
 const FRONT_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BACKEND_DIRECTORY = path.resolve(FRONT_DIRECTORY, '../KungFuBackendService/backend-service');
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
@@ -52,7 +52,6 @@ function getConfiguration() {
     port,
     user: value('DEV_DB_USER', process.platform === 'win32' ? 'postgres' : userInfo().username),
     password: value('DEV_DB_PASSWORD'),
-    javaHome: value('DEV_JAVA_HOME') || process.env.JAVA_HOME,
   };
 }
 
@@ -99,26 +98,6 @@ async function resetDevelopmentDatabase(configuration) {
   });
 }
 
-function findJava(configuration) {
-  const candidates = [
-    configuration.javaHome,
-    process.platform === 'darwin' ? '/opt/homebrew/opt/openjdk@21' : undefined,
-    process.platform === 'darwin' ? '/usr/local/opt/openjdk@21' : undefined,
-  ].filter(Boolean);
-  for (const javaHome of candidates) {
-    const executable = path.join(javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
-    if (existsSync(executable) && isJava21(executable)) return { executable, javaHome };
-  }
-  const executable = process.platform === 'win32' ? 'java.exe' : 'java';
-  if (isJava21(executable)) return { executable, javaHome: undefined };
-  throw new Error('No se ha encontrado Java 21. Instálalo y déjalo disponible en la terminal, o define DEV_JAVA_HOME en .env.dev.local.');
-}
-
-function isJava21(executable) {
-  const result = spawnSync(executable, ['-version'], { encoding: 'utf8' });
-  return result.status === 0 && `${result.stdout}\n${result.stderr}`.includes('version "21');
-}
-
 async function assertPortFree(port) {
   await new Promise((resolve, reject) => {
     const server = createNetServer();
@@ -127,23 +106,32 @@ async function assertPortFree(port) {
   });
 }
 
-function startBackend(configuration, java) {
+function startBackend(configuration) {
   if (!existsSync(BACKEND_DIRECTORY)) throw new Error(`No se ha encontrado el backend en ${BACKEND_DIRECTORY}. Comprueba que el submódulo esté inicializado.`);
+  const databaseUrl = new URL('postgresql://localhost');
+  databaseUrl.hostname = configuration.host;
+  databaseUrl.port = String(configuration.port);
+  databaseUrl.username = configuration.user;
+  if (configuration.password) databaseUrl.password = configuration.password;
+  databaseUrl.pathname = '/' + DATABASE_NAME;
   const environment = {
     ...process.env,
+    NODE_ENV: 'development',
+    HOST: '127.0.0.1',
+    PORT: '8080',
+    DATABASE_URL: databaseUrl.toString(),
     DB_HOST: configuration.host,
     DB_PORT: String(configuration.port),
     DB_NAME: DATABASE_NAME,
     DB_USER: configuration.user,
     DB_PASSWORD: configuration.password,
-    SERVER_ADDRESS: '127.0.0.1',
-    SERVER_PORT: '8080',
-    ...(java.javaHome ? { JAVA_HOME: java.javaHome } : {}),
+    COOKIE_SECURE: 'false',
+    CORS_ORIGINS: 'http://127.0.0.1:8000,http://localhost:8000',
   };
   const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : 'sh';
   const argumentsForCommand = process.platform === 'win32'
-    ? ['/d', '/s', '/c', 'gradlew.bat bootRun --console=plain --no-daemon']
-    : ['./gradlew', 'bootRun', '--console=plain', '--no-daemon'];
+    ? ['/d', '/s', '/c', 'npm.cmd run dev']
+    : ['-c', 'npm run dev'];
   const child = spawn(command, argumentsForCommand, { cwd: BACKEND_DIRECTORY, env: environment, stdio: 'inherit', detached: process.platform !== 'win32' });
   child.once('error', (error) => console.error(`No se ha podido arrancar el backend: ${error.message}`));
   return child;
@@ -160,7 +148,7 @@ async function waitForBackend(child) {
         return;
       }
     } catch {
-      // Spring Boot todavía está arrancando.
+      // El backend Node todavía está arrancando.
     }
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
@@ -178,6 +166,12 @@ function dateTimeOnWeekday(weekOffset, weekday, hour, minute = 0) {
   const today = new Date();
   const currentWeekday = (today.getDay() + 6) % 7;
   return dateTimeAt((weekOffset * 7) + weekday - currentWeekday, hour, minute);
+}
+
+function addMinutesToLocal(dateTime, minutes) {
+  const date = new Date(`${dateTime}Z`);
+  date.setUTCMinutes(date.getUTCMinutes() + minutes);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}T${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}:${String(date.getUTCSeconds()).padStart(2, '0')}`;
 }
 
 
@@ -206,6 +200,10 @@ async function seedDatabase(configuration) {
         await client.query('COMMIT');
         console.log('Datos de demostración ya presentes; se conservan los cambios locales.');
         return;
+      }
+      const previousSeed = await client.query('SELECT version FROM dev_support.seed_state ORDER BY seeded_at DESC LIMIT 1');
+      if (previousSeed.rowCount > 0) {
+        throw new Error(`La base tiene el conjunto de prueba ${previousSeed.rows[0].version}. Ejecuta npm run dev:reset para crear el nuevo horario de prueba sin mezclar datos.`);
       }
       await client.query("UPDATE estilos SET nombre = 'Shaolin del Norte' WHERE nombre = 'Shaolin'");
       await client.query("UPDATE estilos SET nombre = 'Wing Chun' WHERE nombre = 'Ving Tsun'");
@@ -298,43 +296,60 @@ async function seedDatabase(configuration) {
         for (const formName of grade[3].slice(0, Math.min(grade[3].length, 2 + (index % 4)))) await client.query('INSERT INTO alumno_forma (id_alumno, id_forma, fecha_aprendida) VALUES ($1, $2, $3)', [result.rows[0].id_alumno, formIds.get(formName), joinedAtFor(Math.max(0, index - 2))]);
       }
 
-      // El esquema actual no distingue todavía clases recurrentes y cursos.
-      // Estas sesiones individuales representan la agenda de las próximas cuatro semanas.
       const courses = [
-        ['Clase diaria · mañana', 'Clase diaria', 'Clase regular de mañana para práctica técnica general.'],
-        ['Clase diaria · tarde', 'Clase diaria', 'Clase regular de tarde para práctica técnica general.'],
-        ['Formas y técnica', 'Formas y técnica', 'Estudio de formas y técnica de los estilos impartidos por la escuela.'],
-        ['Preparación física para estilos', 'Preparación física', 'Movilidad, fuerza y acondicionamiento aplicados a la práctica de los estilos.'],
-        ['Combate Sanda', 'Sanda', 'Trabajo de distancia, combate y preparación específica de Sanda.'],
-        ['Taller de Shuai Jiao', 'Especialización', 'Actividad puntual de introducción a la lucha tradicional china.'],
-        ['Introducción al Taijiquan estilo Chen', 'Especialización', 'Sesión de aproximación a un estilo que no forma parte del programa habitual.'],
-        ['Defensa personal', 'Especialización', 'Taller práctico de recursos básicos de defensa personal.'],
+        ['Clase diaria · mañana', 'Clase diaria', 'Clase regular de mañana para práctica técnica general.', 'HABITUAL'],
+        ['Clase diaria · tarde', 'Clase diaria', 'Clase regular de tarde para práctica técnica general.', 'HABITUAL'],
+        ['Formas y técnica', 'Formas y técnica', 'Estudio de formas y técnica de los estilos impartidos por la escuela.', 'HABITUAL'],
+        ['Preparación física para estilos', 'Preparación física', 'Movilidad, fuerza y acondicionamiento aplicados a la práctica de los estilos.', 'HABITUAL'],
+        ['Combate Sanda', 'Sanda', 'Trabajo de distancia, combate y preparación específica de Sanda.', 'HABITUAL'],
+        ['Taller de Shuai Jiao', 'Especialización', 'Curso especial de fin de semana sobre lucha tradicional china.', 'CURSO_ESPECIAL'],
+        ['Introducción al Taijiquan estilo Chen', 'Especialización', 'Curso intensivo de fin de semana sobre un estilo invitado.', 'CURSO_ESPECIAL'],
+        ['Defensa personal', 'Especialización', 'Curso especial de tarde sobre defensa personal.', 'CURSO_ESPECIAL'],
       ];
       const courseIds = [];
-      for (const [name, topic, description] of courses) {
-        const result = await client.query('INSERT INTO cursos (nombre, tema, descripcion) VALUES ($1, $2, $3) RETURNING id_curso', [name, topic, description]);
+      for (const [name, topic, description, type] of courses) {
+        const result = await client.query('INSERT INTO cursos (nombre, tema, descripcion, tipo_curso) VALUES ($1, $2, $3, $4) RETURNING id_curso', [name, topic, description, type]);
         courseIds.push(result.rows[0].id_curso);
       }
 
-      const weeklySessions = [
-        [0, 0, 0, 9, 30], [0, 0, 1, 9, 30], [0, 0, 2, 9, 30], [0, 0, 3, 9, 30], [0, 0, 4, 9, 30],
-        [1, 1, 0, 18, 30], [1, 1, 1, 18, 30], [1, 1, 2, 18, 30], [1, 1, 3, 18, 30], [1, 1, 4, 18, 30],
-        [2, 2, 0, 17, 0], [2, 3, 2, 17, 0], [3, 4, 1, 17, 30], [3, 4, 3, 17, 30], [4, 5, 3, 19, 0],
+      const roomNames = ['Sala Principal', 'Sala Tatami', 'Sala Multiusos'];
+      const roomIds = [];
+      for (const name of roomNames) {
+        const result = await client.query('INSERT INTO salas (nombre) VALUES ($1) RETURNING id_sala', [name]);
+        roomIds.push(result.rows[0].id_sala);
+      }
+
+      const weeklySchedules = [
+        [0, 0, 0, 9, 30, 90, 0], [0, 0, 1, 9, 30, 90, 0], [0, 0, 2, 9, 30, 90, 0], [0, 0, 3, 9, 30, 90, 0], [0, 0, 4, 9, 30, 90, 0],
+        [1, 1, 0, 18, 30, 90, 1], [1, 1, 1, 18, 30, 90, 1], [1, 1, 2, 18, 30, 90, 1], [1, 1, 3, 18, 30, 90, 1], [1, 1, 4, 18, 30, 90, 1],
+        [2, 2, 0, 17, 0, 90, 2], [2, 3, 2, 17, 0, 90, 2], [3, 4, 1, 16, 30, 90, 0], [3, 4, 3, 16, 30, 90, 0], [4, 5, 4, 20, 0, 90, 1],
+        [2, 2, 0, 9, 30, 90, 2],
       ];
-      const sessions = [];
-      for (let weekOffset = 0; weekOffset < 4; weekOffset += 1) {
-        for (const [courseIndex, instructorIndex, weekday, hour, minute] of weeklySessions) {
-          sessions.push([courseIndex, instructorIndex, dateTimeOnWeekday(weekOffset, weekday, hour, minute), true]);
+
+      const monday = dateTimeOnWeekday(0, 0, 0).slice(0, 10);
+      const scheduledCourseIds = [];
+      for (const [courseIndex, instructorIndex, weekday, hour, minute, durationMinutes, roomIndex] of weeklySchedules) {
+        const startTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+        const endTime = addMinutesToLocal(`2000-01-01T${startTime}`, durationMinutes).slice(11);
+        const rule = await client.query('INSERT INTO horarios_recurrentes (id_curso, id_instructor, id_sala, dia_semana, hora_inicio, hora_fin, fecha_inicio) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id_horario_recurrente', [courseIds[courseIndex], instructorIds[instructorIndex], roomIds[roomIndex], weekday + 1, startTime, endTime, monday]);
+        for (let weekOffset = 0; weekOffset < 4; weekOffset += 1) {
+          const start = dateTimeOnWeekday(weekOffset, weekday, hour, minute);
+          const end = addMinutesToLocal(start, durationMinutes);
+          const result = await client.query('INSERT INTO cursos_agendados (id_curso, id_instructor, id_sala, fecha_hora, fecha_hora_fin, activo, id_horario_recurrente, fecha_recurrencia) VALUES ($1, $2, $3, $4, $5, TRUE, $6, $7) RETURNING id_curso_agendado', [courseIds[courseIndex], instructorIds[instructorIndex], roomIds[roomIndex], start, end, rule.rows[0].id_horario_recurrente, start.slice(0, 10)]);
+          scheduledCourseIds.push(result.rows[0].id_curso_agendado);
         }
       }
-      sessions.push([5, 5, dateTimeOnWeekday(1, 5, 10, 0), true]);
-      sessions.push([6, 2, dateTimeOnWeekday(2, 5, 10, 0), true]);
-      sessions.push([7, 7, dateTimeOnWeekday(3, 5, 10, 0), true]);
-      sessions.push([5, 5, dateTimeOnWeekday(3, 5, 10, 0), false]);
 
-      const scheduledCourseIds = [];
-      for (const [courseIndex, instructorIndex, dateTime, active] of sessions) {
-        const result = await client.query('INSERT INTO cursos_agendados (id_curso, id_instructor, fecha_hora, activo) VALUES ($1, $2, $3, $4) RETURNING id_curso_agendado', [courseIds[courseIndex], instructorIds[instructorIndex], dateTime, active]);
+      const specialSessions = [
+        [5, 5, 1, 5, 10, 31 * 60, 2, true],
+        [6, 2, 2, 5, 9, 8 * 60, 1, true],
+        [7, 7, 3, 4, 15, 3 * 60, 0, true],
+        [5, 5, 3, 5, 10, 31 * 60, 2, false],
+      ];
+      for (const [courseIndex, instructorIndex, weekOffset, weekday, hour, durationMinutes, roomIndex, active] of specialSessions) {
+        const start = dateTimeOnWeekday(weekOffset, weekday, hour, 0);
+        const end = addMinutesToLocal(start, durationMinutes);
+        const result = await client.query('INSERT INTO cursos_agendados (id_curso, id_instructor, id_sala, fecha_hora, fecha_hora_fin, activo) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id_curso_agendado', [courseIds[courseIndex], instructorIds[instructorIndex], roomIds[roomIndex], start, end, active]);
         scheduledCourseIds.push(result.rows[0].id_curso_agendado);
       }
       for (const [sessionIndex, scheduledCourseId] of scheduledCourseIds.entries()) {
@@ -342,7 +357,7 @@ async function seedDatabase(configuration) {
       }
       await client.query('INSERT INTO dev_support.seed_state (version) VALUES ($1)', [SEED_VERSION]);
       await client.query('COMMIT');
-      console.log('Datos de demostración creados: 50 alumnos, 10 instructores, 8 estilos, 70 formas y una agenda semanal de prueba.');
+      console.log('Datos de demostración creados: 50 alumnos, 10 instructores, 3 salas, clases recurrentes con horarios paralelos, cursos de fin de semana y una actividad cancelada.');
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -372,12 +387,11 @@ async function stop() {
 
 async function main() {
   const configuration = getConfiguration();
-  const java = findJava(configuration);
   await assertPortFree(8000);
   await assertPortFree(8080);
   if (process.argv.includes('--reset')) await resetDevelopmentDatabase(configuration);
   await prepareDevelopmentDatabase(configuration);
-  backendProcess = startBackend(configuration, java);
+  backendProcess = startBackend(configuration);
   await waitForBackend(backendProcess);
   await seedDatabase(configuration);
   await startFrontend();

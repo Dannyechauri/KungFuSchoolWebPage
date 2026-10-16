@@ -2,7 +2,7 @@ import { createContext } from 'react'
 
 export type AuthUser = {
   authenticated: true
-  role: 'ADMIN' | 'USER'
+  role: 'ADMIN' | 'INSTRUCTOR' | 'USER'
   userId: number
   displayName: string
 }
