@@ -1,32 +1,16 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react'
-import { ApiRequestError } from '../../api/client'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useLocation, useNavigate } from 'react-router'
 import { PanelCard } from '../../components/PanelCard'
 import { SelectField } from '../../components/SelectField'
 import { useAuth } from '../auth/useAuth'
 import {
-  cancelCalendarEvent,
-  cancelRecurringRule,
-  createCalendarCourse,
-  createCalendarEvent,
-  createRecurringRules,
   entityKey,
-  getCalendarCourses,
   getCalendarEvents,
-  getCalendarInstructors,
   getCalendarRooms,
-  getRecurringRules,
-  updateCalendarCourse,
-  updateCalendarEvent,
-  updateRecurringRule,
-  type CalendarCourse,
   type CalendarEvent,
-  type CalendarInstructor,
   type CalendarRoom,
-  type CoursePayload,
-  type EventPayload,
-  type RecurringPayload,
-  type RecurringRule,
 } from './calendarApi'
+import { calendarErrorMessage } from './calendarErrors'
 import {
   addDays,
   addDaysToKey,
@@ -43,10 +27,8 @@ import {
   startOfWeek,
   weekDateKeys,
 } from './calendarDate'
-import { RoomManager } from './RoomManager'
-import { ScheduleForm, type ScheduleFormTarget } from './ScheduleForm'
+import type { CalendarNavigationState, CalendarPageState, CalendarView } from './calendarNavigation'
 
-type CalendarView = 'month' | 'week' | 'upcoming'
 type PositionedEvent = { event: CalendarEvent; start: number; end: number; lane: number; laneCount: number }
 
 const weekdays = [
@@ -60,17 +42,6 @@ const weekdays = [
 ]
 
 const buttonClass = 'min-h-10 rounded-full px-4 text-sm font-bold'
-const inputClass = 'min-h-11 rounded-soft border border-line bg-white px-3 text-ink'
-const labelClass = 'grid gap-2 text-sm font-bold text-muted'
-
-function errorMessage(error: unknown) {
-  if (error instanceof ApiRequestError && error.status === 409) {
-    if (error.message.toLowerCase().includes('solapa')) return `La sala ya está ocupada en ese horario. ${error.message}`
-    return error.message
-  }
-  return error instanceof Error ? error.message : 'No se pudo completar la operación.'
-}
-
 function eventTimeRange(event: CalendarEvent) {
   const startDate = event.fecha_hora.slice(0, 10)
   const endDate = event.fecha_hora_fin.slice(0, 10)
@@ -215,30 +186,24 @@ function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent }: {
 export function CalendarPage() {
   const { user } = useAuth()
   const canManage = user?.role === 'ADMIN' || user?.role === 'INSTRUCTOR'
-  const isAdmin = user?.role === 'ADMIN'
+  const navigate = useNavigate()
+  const location = useLocation()
+  const navigationState = location.state as CalendarNavigationState | null
+  const restoredCalendarState = navigationState?.calendarState
   const initialToday = madridNowParts().date
-  const [view, setView] = useState<CalendarView>('week')
-  const [monthDate, setMonthDate] = useState(() => startOfMonth(dateFromKey(initialToday)))
-  const [weekDate, setWeekDate] = useState(() => startOfWeek(dateFromKey(initialToday)))
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
+  const [view, setView] = useState<CalendarView>(restoredCalendarState?.view ?? 'week')
+  const [monthDate, setMonthDate] = useState(() => startOfMonth(dateFromKey(restoredCalendarState?.monthDate ?? initialToday)))
+  const [weekDate, setWeekDate] = useState(() => startOfWeek(dateFromKey(restoredCalendarState?.weekDate ?? initialToday)))
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(restoredCalendarState?.roomId ?? null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
-  const [formTarget, setFormTarget] = useState<ScheduleFormTarget | null>(null)
-  const [courses, setCourses] = useState<CalendarCourse[]>([])
-  const [instructors, setInstructors] = useState<CalendarInstructor[]>([])
   const [rooms, setRooms] = useState<CalendarRoom[]>([])
   const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [rules, setRules] = useState<RecurringRule[]>([])
   const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null)
   const [loadedEventsKey, setLoadedEventsKey] = useState<string | null>(null)
   const [metadataError, setMetadataError] = useState<string | null>(null)
   const [eventsError, setEventsError] = useState<string | null>(null)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
   const [metadataVersion, setMetadataVersion] = useState(0)
   const [eventsVersion, setEventsVersion] = useState(0)
-  const [editingCourse, setEditingCourse] = useState<CalendarCourse | null>(null)
-  const [courseError, setCourseError] = useState<string | null>(null)
-  const [courseSaving, setCourseSaving] = useState(false)
 
   const today = madridNowParts()
   const weekKeys = useMemo(() => weekDateKeys(weekDate), [weekDate])
@@ -248,7 +213,7 @@ export function CalendarPage() {
     if (view === 'month') return { from: `${monthKeys[0]}T00:00`, to: `${addDaysToKey(monthKeys[41] ?? today.date, 1)}T00:00` }
     return { from: `${today.date}T00:00`, to: `${addDaysToKey(today.date, 90)}T23:59` }
   }, [view, weekKeys, monthKeys, today.date])
-  const metadataRequestKey = `${canManage ? 'manager' : 'viewer'}:${metadataVersion}`
+  const metadataRequestKey = `rooms:${metadataVersion}`
   const eventsRequestKey = `${range.from}|${range.to}|${selectedRoomId ?? 'all'}|${eventsVersion}`
   const metadataLoading = loadedMetadataKey !== metadataRequestKey
   const eventsLoading = loadedEventsKey !== eventsRequestKey
@@ -261,28 +226,16 @@ export function CalendarPage() {
 
   useEffect(() => {
     let active = true
-    Promise.all([
-      getCalendarCourses(),
-      getCalendarRooms(),
-      ...(canManage ? [getCalendarInstructors(), getRecurringRules()] : []),
-    ])
-      .then((results) => {
+    getCalendarRooms()
+      .then((loadedRooms) => {
         if (!active) return
-        setCourses(results[0] as CalendarCourse[])
-        setRooms(results[1] as CalendarRoom[])
-        if (canManage) {
-          setInstructors(results[2] as CalendarInstructor[])
-          setRules(results[3] as RecurringRule[])
-        } else {
-          setInstructors([])
-          setRules([])
-        }
+        setRooms(loadedRooms)
         setMetadataError(null)
       })
-      .catch((error: unknown) => { if (active) setMetadataError(errorMessage(error)) })
+      .catch((error: unknown) => { if (active) setMetadataError(calendarErrorMessage(error)) })
       .finally(() => { if (active) setLoadedMetadataKey(metadataRequestKey) })
     return () => { active = false }
-  }, [canManage, metadataVersion, metadataRequestKey])
+  }, [metadataVersion, metadataRequestKey])
 
   useEffect(() => {
     let active = true
@@ -295,7 +248,7 @@ export function CalendarPage() {
           setEventsError(null)
         }
       })
-      .catch((error: unknown) => { if (active) setEventsError(errorMessage(error)) })
+      .catch((error: unknown) => { if (active) setEventsError(calendarErrorMessage(error)) })
       .finally(() => {
         if (!active) return
         const minimumLoadingTime = import.meta.env.DEV ? 1000 : 0
@@ -309,96 +262,20 @@ export function CalendarPage() {
     }
   }, [range, selectedRoomId, eventsRequestKey])
 
-  const refreshMetadata = useCallback(() => setMetadataVersion((version) => version + 1), [])
-  const refreshEvents = useCallback(() => setEventsVersion((version) => version + 1), [])
-
-  async function saveEvent(id: CalendarEvent['id_curso_agendado'] | null, payload: EventPayload) {
-    setIsSaving(true)
-    setActionError(null)
-    try {
-      if (id === null) await createCalendarEvent(payload)
-      else await updateCalendarEvent(id, payload)
-      setFormTarget(null)
-      const startDate = payload.startAt.slice(0, 10)
-      setWeekDate(startOfWeek(dateFromKey(startDate)))
-      setMonthDate(startOfMonth(dateFromKey(startDate)))
-      setView('week')
-      refreshEvents()
-    } catch (error) {
-      setActionError(errorMessage(error))
-    } finally {
-      setIsSaving(false)
+  function openManagement(event?: CalendarEvent) {
+    const calendarState: CalendarPageState = {
+      view,
+      monthDate: dateKey(monthDate),
+      weekDate: dateKey(weekDate),
+      roomId: selectedRoomId,
     }
-  }
-
-  async function saveRule(id: RecurringRule['id_horario_recurrente'] | null, payload: RecurringPayload) {
-    setIsSaving(true)
-    setActionError(null)
-    try {
-      if (id === null) await createRecurringRules(payload)
-      else await updateRecurringRule(id, payload)
-      setFormTarget(null)
-      refreshMetadata()
-      refreshEvents()
-    } catch (error) {
-      setActionError(errorMessage(error))
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
-  async function cancelEvent(event: CalendarEvent) {
-    if (!window.confirm(`¿Cancelar «${event.curso_nombre}» en ${eventRoom(event)}? La actividad quedará visible como cancelada.`)) return
-    setActionError(null)
-    try {
-      await cancelCalendarEvent(event.id_curso_agendado)
-      refreshEvents()
-    } catch (error) {
-      setActionError(errorMessage(error))
-    }
-  }
-
-  async function cancelRule(rule: RecurringRule) {
-    if (!window.confirm(`¿Cancelar el horario semanal de «${rule.curso_nombre}» en ${rule.sala_nombre ?? 'sala sin asignar'}? También se cancelarán sus sesiones futuras.`)) return
-    setActionError(null)
-    try {
-      await cancelRecurringRule(rule.id_horario_recurrente)
-      refreshMetadata()
-      refreshEvents()
-    } catch (error) {
-      setActionError(errorMessage(error))
-    }
-  }
-
-  async function saveCourse(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = event.currentTarget
-    const data = new FormData(form)
-    const payload: CoursePayload = {
-      nombre: String(data.get('nombre')).trim(),
-      tema: String(data.get('tema')).trim(),
-      descripcion: String(data.get('descripcion') || '').trim() || null,
-      tipo_curso: String(data.get('tipo_curso')) as CoursePayload['tipo_curso'],
-    }
-    setCourseSaving(true)
-    setCourseError(null)
-    try {
-      if (editingCourse) await updateCalendarCourse(editingCourse.id_curso, payload)
-      else await createCalendarCourse(payload)
-      form.reset()
-      setEditingCourse(null)
-      refreshMetadata()
-    } catch (error) {
-      setCourseError(errorMessage(error))
-    } finally {
-      setCourseSaving(false)
-    }
-  }
-
-  function openEventEditor(event: CalendarEvent) {
-    setSelectedDate(null)
-    setActionError(null)
-    setFormTarget({ kind: 'event-edit', event })
+    navigate('/calendario/gestionar', {
+      state: {
+        returnTo: `${location.pathname}${location.search}`,
+        calendarState,
+        ...(event ? { editEvent: event } : {}),
+      } satisfies CalendarNavigationState,
+    })
   }
 
   if (metadataLoading && eventsLoading) {
@@ -414,7 +291,7 @@ export function CalendarPage() {
       {metadataError ? (
         <PanelCard className="mt-5 p-4">
           <p className="m-0 text-sm font-bold text-red-dark" role="alert">{metadataError}</p>
-          <button className={`${buttonClass} mt-3 border border-line text-red-dark`} type="button" onClick={refreshMetadata}>Reintentar</button>
+          <button className={`${buttonClass} mt-3 border border-line text-red-dark`} type="button" onClick={() => setMetadataVersion((version) => version + 1)}>Reintentar</button>
         </PanelCard>
       ) : null}
 
@@ -425,12 +302,7 @@ export function CalendarPage() {
               <button key={value} className={`${buttonClass} ${view === value ? 'bg-red text-white' : 'text-muted'}`} type="button" onClick={() => setView(value)} aria-pressed={view === value}>{label}</button>
             ))}
           </div>
-          {canManage ? (
-            <>
-              <button className={`${buttonClass} bg-red text-white hover:bg-red-dark`} type="button" onClick={() => { setActionError(null); setFormTarget({ kind: 'event-create', date: today.date }) }}>+ Sesión puntual</button>
-              <button className={`${buttonClass} border border-red bg-paper text-red-dark`} type="button" onClick={() => { setActionError(null); setFormTarget({ kind: 'rule-create', date: today.date }) }}>+ Horario habitual</button>
-            </>
-          ) : null}
+          {canManage ? <button className={`${buttonClass} bg-red text-white hover:bg-red-dark`} type="button" onClick={() => openManagement()}>Gestionar agenda</button> : null}
         </div>
 
         {view !== 'upcoming' ? (
@@ -453,89 +325,10 @@ export function CalendarPage() {
         {eventsLoading ? <span className="text-sm text-muted" role="status" aria-live="polite">Actualizando…</span> : null}
       </div>
 
-      {canManage ? (
-        <div className="mt-5 grid gap-3">
-          {formTarget ? (
-            <PanelCard className="p-5 md:p-6">
-              <ScheduleForm
-                key={`${formTarget.kind}-${formTarget.kind === 'event-edit' ? entityKey(formTarget.event.id_curso_agendado) : formTarget.kind === 'rule-edit' ? entityKey(formTarget.rule.id_horario_recurrente) : formTarget.date}`}
-                target={formTarget}
-                courses={courses}
-                instructors={instructors}
-                rooms={rooms}
-                saving={isSaving}
-                error={actionError}
-                onCancel={() => { setFormTarget(null); setActionError(null) }}
-                onSubmitEvent={(id, payload) => void saveEvent(id, payload)}
-                onSubmitRule={(id, payload) => void saveRule(id, payload)}
-              />
-            </PanelCard>
-          ) : null}
-
-          <details className="rounded-panel border border-line bg-paper/85 p-5 shadow-sm">
-            <summary className="cursor-pointer font-bold text-ink">Gestionar cursos <span className="ml-1 text-sm font-medium text-muted">({courses.length})</span></summary>
-            <div className="mt-4 grid gap-4">
-              <ul className="grid gap-2 md:grid-cols-2">
-                {courses.map((course) => (
-                  <li key={entityKey(course.id_curso)} className="flex items-center justify-between gap-3 rounded-soft border border-line bg-white/60 px-3 py-2">
-                    <span className="min-w-0"><strong className="block truncate text-sm text-ink">{course.nombre}</strong><span className="text-xs text-muted">{course.tipo_curso === 'HABITUAL' ? 'Habitual' : 'Especial'} · {course.tema}</span></span>
-                    <button className="shrink-0 text-sm font-bold text-red-dark underline" type="button" onClick={() => { setEditingCourse(course); setCourseError(null) }}>Editar</button>
-                  </li>
-                ))}
-              </ul>
-              <form className="grid gap-4 border-t border-line pt-4 md:grid-cols-2 xl:grid-cols-4" key={editingCourse ? entityKey(editingCourse.id_curso) : 'new-course'} onSubmit={saveCourse}>
-                <h3 className="m-0 text-base font-bold text-ink md:col-span-2 xl:col-span-4">{editingCourse ? `Editar ${editingCourse.nombre}` : 'Añadir curso'}</h3>
-                <label className={labelClass}>Nombre<input className={inputClass} name="nombre" defaultValue={editingCourse?.nombre ?? ''} maxLength={100} required /></label>
-                <label className={labelClass}>Tema<input className={inputClass} name="tema" defaultValue={editingCourse?.tema ?? ''} maxLength={120} required /></label>
-                <label className={labelClass}>Tipo<SelectField name="tipo_curso" defaultValue={editingCourse?.tipo_curso ?? 'HABITUAL'}><option value="HABITUAL">Habitual</option><option value="CURSO_ESPECIAL">Curso especial</option></SelectField></label>
-                <label className={labelClass}>Descripción<input className={inputClass} name="descripcion" defaultValue={editingCourse?.descripcion ?? ''} maxLength={255} /></label>
-                {courseError ? <p className="m-0 text-sm font-bold text-red-dark md:col-span-2 xl:col-span-4" role="alert">{courseError}</p> : null}
-                <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-4">
-                  <button className={`${buttonClass} bg-red text-white disabled:opacity-50`} type="submit" disabled={courseSaving}>{courseSaving ? 'Guardando…' : editingCourse ? 'Guardar curso' : 'Crear curso'}</button>
-                  {editingCourse ? <button className={`${buttonClass} border border-line text-muted`} type="button" onClick={() => { setEditingCourse(null); setCourseError(null) }}>Dejar de editar</button> : null}
-                </div>
-              </form>
-            </div>
-          </details>
-
-          {isAdmin ? (
-            <details className="rounded-panel border border-line bg-paper/85 p-5 shadow-sm">
-              <summary className="cursor-pointer font-bold text-ink">Gestionar salas <span className="ml-1 text-sm font-medium text-muted">({rooms.length})</span></summary>
-              <div className="mt-4"><RoomManager rooms={rooms} onChanged={() => { refreshMetadata(); refreshEvents() }} /></div>
-            </details>
-          ) : null}
-
-          <PanelCard className="p-5">
-            <h2 className="m-0 text-lg font-bold text-ink">Horarios habituales</h2>
-            <p className="mt-1 text-sm text-muted">Editar una regla actualiza sus sesiones futuras no modificadas. Cancelarla cancela sus sesiones futuras.</p>
-            {!rules.filter((rule) => rule.activo).length ? <p className="mt-4 text-sm text-muted">No hay horarios habituales activos.</p> : (
-              <ul className="mt-4 grid gap-2 md:grid-cols-2">
-                {rules.filter((rule) => rule.activo).map((rule) => (
-                  <li key={entityKey(rule.id_horario_recurrente)} className="rounded-soft border border-line bg-white/60 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <strong className="block text-sm text-ink">{rule.curso_nombre}</strong>
-                        <span className="mt-1 block text-xs text-muted">{weekdays[rule.dia_semana - 1]?.label} · {rule.hora_inicio.slice(0, 5)}–{rule.hora_fin.slice(0, 5)}</span>
-                        <span className="mt-1 block text-xs text-muted">{rule.sala_nombre ?? 'Sala sin asignar'} · {rule.instructor_nombre}</span>
-                        <span className="mt-1 block text-xs text-muted">Desde {formatCalendarDate(rule.fecha_inicio)}{rule.fecha_fin ? ` hasta ${formatCalendarDate(rule.fecha_fin)}` : ' · sin fecha final'}</span>
-                      </div>
-                      <div className="flex gap-3">
-                        <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => { setActionError(null); setFormTarget({ kind: 'rule-edit', rule }) }}>Editar</button>
-                        <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => void cancelRule(rule)}>Cancelar regla</button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </PanelCard>
-        </div>
-      ) : null}
-
       {eventsError ? (
         <PanelCard className="mt-5 p-4">
           <p className="m-0 text-sm font-bold text-red-dark" role="alert">{eventsError}</p>
-          <button className={`${buttonClass} mt-3 border border-line text-red-dark`} type="button" onClick={refreshEvents}>Reintentar</button>
+          <button className={`${buttonClass} mt-3 border border-line text-red-dark`} type="button" onClick={() => setEventsVersion((version) => version + 1)}>Reintentar</button>
         </PanelCard>
       ) : null}
 
@@ -602,7 +395,6 @@ export function CalendarPage() {
                 <div><p className="m-0 text-xs font-black uppercase tracking-[0.12em] text-red">Agenda del día</p><h2 id="selected-day-title" className="mt-2 text-2xl font-bold capitalize text-ink">{formatCalendarDate(selectedDate, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</h2></div>
                 <button className="grid size-9 shrink-0 place-items-center rounded-full border border-line bg-white text-lg font-bold text-red-dark" type="button" onClick={() => setSelectedDate(null)} aria-label="Cerrar detalle del día">×</button>
               </div>
-              {actionError ? <p className="mt-4 rounded-soft bg-red/10 p-3 text-sm font-bold text-red-dark" role="alert">{actionError}</p> : null}
               {!activitiesForSelectedDate.length ? <p className="mt-5 text-sm text-muted">No hay actividades para este día y filtro.</p> : (
                 <div className="mt-5 grid gap-3">
                   {activitiesForSelectedDate.map((event) => (
@@ -618,8 +410,7 @@ export function CalendarPage() {
                       </div>
                       {canManage && event.activo ? (
                         <div className="mt-4 flex flex-wrap gap-3 border-t border-line pt-3">
-                          <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => openEventEditor(event)}>Editar sesión</button>
-                          <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => void cancelEvent(event)}>Cancelar sesión</button>
+                          <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => openManagement(event)}>Gestionar sesión</button>
                         </div>
                       ) : null}
                     </article>

@@ -17,6 +17,7 @@ type ScheduleFormProps = {
   saving: boolean
   error: string | null
   onCancel: () => void
+  onCancelEvent?: (event: CalendarEvent) => void
   onSubmitEvent: (id: CalendarEvent['id_curso_agendado'] | null, payload: EventPayload) => void
   onSubmitRule: (id: RecurringRule['id_horario_recurrente'] | null, payload: RecurringPayload) => void
 }
@@ -39,7 +40,7 @@ function parseId(value: FormDataEntryValue | null) {
   return Number.isSafeInteger(id) && id > 0 ? id : 0
 }
 
-export function ScheduleForm({ target, courses, instructors, rooms, saving, error, onCancel, onSubmitEvent, onSubmitRule }: ScheduleFormProps) {
+export function ScheduleForm({ target, courses, instructors, rooms, saving, error, onCancel, onCancelEvent, onSubmitEvent, onSubmitRule }: ScheduleFormProps) {
   const isRule = target.kind === 'rule-create' || target.kind === 'rule-edit'
   const isEditing = target.kind === 'event-edit' || target.kind === 'rule-edit'
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -200,6 +201,7 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
         <button className="min-h-11 rounded-full bg-red px-5 text-sm font-bold text-white hover:bg-red-dark disabled:opacity-50" type="submit" disabled={saving || !availableCourses.length || !activeInstructors.length || !availableRooms.length}>
           {saving ? 'Guardando…' : isEditing ? 'Guardar cambios' : isRule ? 'Crear horario habitual' : 'Añadir a la agenda'}
         </button>
+        {target.kind === 'event-edit' && target.event.activo && onCancelEvent ? <button className="min-h-11 rounded-full border border-red px-5 text-sm font-bold text-red-dark disabled:opacity-50" type="button" onClick={() => onCancelEvent(target.event)} disabled={saving}>Cancelar sesión</button> : null}
         <button className="min-h-11 rounded-full border border-line px-5 text-sm font-bold text-muted" type="button" onClick={onCancel} disabled={saving}>Cancelar</button>
       </div>
     </form>

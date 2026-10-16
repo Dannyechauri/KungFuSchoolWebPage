@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router'
 import { AuthProvider } from './features/auth/AuthProvider'
 import { LoginPage } from './features/auth/LoginPage'
+import { CalendarManagementPage } from './features/calendar/CalendarManagementPage'
 import { useAuth } from './features/auth/useAuth'
 import { AppLayout } from './layouts/AppLayout'
 import { CalendarPage } from './pages/CalendarPage'
@@ -23,6 +24,7 @@ function AuthenticatedApp() {
       <Route element={<AppLayout />}>
         <Route index element={<HomePage />} />
         <Route path="calendario" element={<CalendarPage />} />
+        <Route path="calendario/gestionar" element={<CalendarManagementPage />} />
         <Route path="datos" element={<DataManagementPage />} />
 
         {/*
