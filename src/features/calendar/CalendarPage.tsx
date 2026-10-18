@@ -117,6 +117,8 @@ function tooltipPosition(button: HTMLButtonElement) {
 function CalendarEventCard({ event, onSelect, compact = false, showTooltip = false }: { event: CalendarEvent; onSelect: () => void; compact?: boolean; showTooltip?: boolean }) {
   const [tooltip, setTooltip] = useState<{ left: number; top: number } | null>(null)
   const color = courseColor(event.id_curso)
+  const duration = minutesOfDateTime(event.fecha_hora_fin) - minutesOfDateTime(event.fecha_hora)
+  const compactLabel = compact && duration < 55
   const updateTooltip = (button: HTMLButtonElement) => {
     const position = tooltipPosition(button)
     setTooltip((current) => current?.left === position.left && current.top === position.top ? current : position)
@@ -129,7 +131,7 @@ function CalendarEventCard({ event, onSelect, compact = false, showTooltip = fal
   return (
     <>
       <button
-        className={`w-full rounded-soft border p-3 text-left ${color.border} ${color.surface} ${color.text} ${event.activo ? 'hover:brightness-95' : 'opacity-70'}`}
+        className={`w-full rounded-soft border text-left ${compact ? 'h-full min-h-0 overflow-hidden' : ''} ${compactLabel ? duration < 22 ? 'px-1 py-0' : 'p-1.5' : compact ? 'p-2' : 'p-3'} ${color.border} ${color.surface} ${color.text} ${event.activo ? 'hover:brightness-95' : 'opacity-70'}`}
         type="button"
         onClick={openEvent}
         onMouseEnter={(mouseEvent) => { if (showTooltip) updateTooltip(mouseEvent.currentTarget) }}
@@ -140,8 +142,16 @@ function CalendarEventCard({ event, onSelect, compact = false, showTooltip = fal
         aria-label={`${event.curso_nombre}, ${eventTimeRange(event)}, ${eventRoom(event)}`}
         aria-describedby={tooltip && showTooltip ? `event-tooltip-${entityKey(event.id_curso_agendado)}` : undefined}
       >
-        <span className={`block truncate text-xs font-black ${!event.activo ? 'line-through' : ''}`}>{eventTimeRange(event)}</span>
-        <strong className={`mt-1 block leading-5 ${compact ? 'truncate text-xs' : 'text-sm'} ${!event.activo ? 'line-through' : ''}`}>{event.curso_nombre}</strong>
+        {compactLabel ? (
+          <span className={`block truncate font-black ${duration < 22 ? 'text-[0.6rem] leading-3' : 'text-[0.68rem] leading-4'} ${!event.activo ? 'line-through' : ''}`}>
+            {eventTimeRange(event)} · {event.curso_nombre}
+          </span>
+        ) : (
+          <>
+            <span className={`block truncate text-xs font-black ${!event.activo ? 'line-through' : ''}`}>{eventTimeRange(event)}</span>
+            <strong className={`mt-1 block leading-5 ${compact ? 'truncate text-xs' : 'text-sm'} ${!event.activo ? 'line-through' : ''}`}>{event.curso_nombre}</strong>
+          </>
+        )}
         {!compact ? <span className="mt-1 block truncate text-xs opacity-80">{eventRoom(event)} · {event.instructor_nombre}</span> : null}
         {!event.activo ? <span className="mt-1 block text-[0.68rem] font-bold uppercase tracking-wide">Cancelada</span> : null}
       </button>
@@ -175,7 +185,7 @@ function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent }: {
   const lastHour = Math.max(21, ...allTimes.map((minutes) => Math.ceil(minutes / 60)))
   const startMinute = Math.max(0, firstHour * 60)
   const endMinute = Math.min(24 * 60, lastHour * 60)
-  const pixelsPerMinute = 1.15
+  const pixelsPerMinute = 1.2
   const timelineHeight = Math.max((endMinute - startMinute) * pixelsPerMinute, 13 * 60 * pixelsPerMinute)
   const hours = Array.from({ length: Math.max(1, Math.ceil(endMinute / 60) - Math.floor(startMinute / 60) + 1) }, (_, index) => Math.floor(startMinute / 60) + index)
   const spanningEvents = events.filter((event) => event.fecha_hora.slice(0, 10) !== event.fecha_hora_fin.slice(0, 10))
@@ -213,21 +223,29 @@ function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent }: {
               const laidOut = layoutDayEvents(events, day)
               const today = day === madridNowParts().date
               return (
-                <div key={day} className={`relative border-l border-line ${today ? 'bg-gold/5' : ''}`} style={{ height: timelineHeight }}>
+                <div
+                  key={day}
+                  className={`relative border-l border-line ${today ? 'bg-gold/5' : ''}`}
+                  style={{
+                    height: timelineHeight,
+                    backgroundImage: 'linear-gradient(to bottom, rgb(225 210 196 / 36%) 1px, transparent 1px)',
+                    backgroundSize: `100% ${5 * pixelsPerMinute}px`,
+                  }}
+                >
                   {hours.map((hour) => (
                     <div key={hour} className="absolute inset-x-0 border-t border-line/70" style={{ top: (hour * 60 - startMinute) * pixelsPerMinute }} />
                   ))}
                   {laidOut.map(({ event, start, end, lane, laneCount }) => {
                     const style: CSSProperties = {
-                      top: (start - startMinute) * pixelsPerMinute + 2,
-                      height: Math.max((end - start) * pixelsPerMinute - 3, 46),
+                      top: (start - startMinute) * pixelsPerMinute,
+                      height: (end - start) * pixelsPerMinute,
                       left: `calc(${lane * 100 / laneCount}% + 3px)`,
                       width: `calc(${100 / laneCount}% - 6px)`,
                       zIndex: 2 + lane,
                     }
                     return (
                       <div key={entityKey(event.id_curso_agendado)} className="absolute" style={style}>
-                        <CalendarEventCard event={event} onSelect={() => onSelectEvent(event)} compact showTooltip={laneCount > 1} />
+                        <CalendarEventCard event={event} onSelect={() => onSelectEvent(event)} compact showTooltip={laneCount > 1 || end - start < 55} />
                       </div>
                     )
                   })}
