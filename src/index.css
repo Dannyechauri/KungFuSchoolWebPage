@@ -19,4 +19,29 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
   }
+
+  :where(button:not(:disabled), a[href], summary, [role="button"]:not([aria-disabled="true"]), select:not(:disabled), input[type="checkbox"]:not(:disabled), input[type="radio"]:not(:disabled)) {
+    cursor: pointer;
+  }
+
+  :where(button:disabled, select:disabled, input[type="checkbox"]:disabled, input[type="radio"]:disabled, [aria-disabled="true"]) {
+    cursor: not-allowed;
+  }
+
+  label:has(input[type="checkbox"]:not(:disabled), input[type="radio"]:not(:disabled)) {
+    cursor: pointer;
+  }
+
+  :where(button:not(:disabled):hover, a[href]:hover, summary:hover, [role="button"]:not([aria-disabled="true"]):hover) {
+    filter: brightness(0.96);
+  }
+
+  select:not(:disabled):hover {
+    border-color: var(--color-gold);
+  }
+
+  :where(button:focus-visible, a[href]:focus-visible, summary:focus-visible, [role="button"]:focus-visible, select:focus-visible, input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible) {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 2px;
+  }
 }
