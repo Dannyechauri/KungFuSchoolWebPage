@@ -43,13 +43,13 @@ function weekdayLabel(value: number) {
   return weekdays[value - 1] ?? 'Día'
 }
 
-function calendarStateForEvent(startAt: string, roomId: number, previous?: CalendarPageState): CalendarPageState {
+function calendarStateForEvent(startAt: string, previous?: CalendarPageState): CalendarPageState {
   const date = dateFromKey(startAt.slice(0, 10))
   return {
     view: 'week',
     weekDate: dateKey(startOfWeek(date)),
     monthDate: dateKey(startOfMonth(date)),
-    roomId: String(roomId) || previous?.roomId || null,
+    roomId: previous?.roomId ?? null,
   }
 }
 
@@ -120,7 +120,7 @@ export function CalendarManagementPage() {
     try {
       if (id === null) {
         await createCalendarEvent(payload)
-        returnToCalendar(calendarStateForEvent(payload.startAt, payload.roomId, previousCalendarState))
+        returnToCalendar(calendarStateForEvent(payload.startAt, previousCalendarState))
       } else {
         await updateCalendarEvent(id, payload)
         returnToCalendar(previousCalendarState)
