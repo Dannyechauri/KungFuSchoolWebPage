@@ -179,10 +179,16 @@ export function DataManagementPage() {
     }
 
     if (table === 'cursos_agendados') {
-      const startDate = String(payload.fecha_hora ?? '').slice(0, 10)
-      const endDate = String(payload.fecha_hora_fin ?? '').slice(0, 10)
+      const startAt = String(payload.fecha_hora ?? '')
+      const endAt = String(payload.fecha_hora_fin ?? '')
+      const startDate = startAt.slice(0, 10)
+      const endDate = endAt.slice(0, 10)
       if (startDate && endDate && startDate !== endDate) {
         setError('Cada registro de agenda debe ser una sesión de un solo día. Añade otra sesión para el siguiente día y reutiliza el mismo curso.')
+        return
+      }
+      if (startAt && endAt && endAt <= startAt) {
+        setError('La hora de fin debe ser posterior a la hora de inicio.')
         return
       }
     }
