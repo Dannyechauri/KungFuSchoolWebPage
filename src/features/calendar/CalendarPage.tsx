@@ -275,6 +275,20 @@ export function CalendarPage() {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(restoredCalendarState?.roomId ?? null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
+
+  useEffect(() => {
+    if (!selectedDate && !selectedEvent) return
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        if (selectedEvent) setSelectedEvent(null)
+        else setSelectedDate(null)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [selectedDate, selectedEvent])
+
   const [rooms, setRooms] = useState<CalendarRoom[]>([])
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null)

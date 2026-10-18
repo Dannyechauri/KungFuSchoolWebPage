@@ -1,13 +1,13 @@
 import { Navigate, Route, Routes } from 'react-router'
 import { AuthProvider } from './features/auth/AuthProvider'
 import { LoginPage } from './features/auth/LoginPage'
+import { ProtectedRoute } from './features/auth/ProtectedRoute'
 import { CalendarManagementPage } from './features/calendar/CalendarManagementPage'
 import { useAuth } from './features/auth/useAuth'
 import { AppLayout } from './layouts/AppLayout'
 import { CalendarPage } from './pages/CalendarPage'
 import { DataManagementPage } from './pages/DataManagementPage'
 import { HomePage } from './pages/HomePage'
-import { canManageSchoolData } from './features/auth/permissions'
 
 function AuthenticatedApp() {
   const { user, isCheckingSession } = useAuth()
@@ -25,8 +25,22 @@ function AuthenticatedApp() {
       <Route element={<AppLayout />}>
         <Route index element={user?.role === 'INSTRUCTOR' ? <Navigate to="/calendario" replace /> : <HomePage />} />
         <Route path="calendario" element={<CalendarPage />} />
-        <Route path="calendario/gestionar" element={<CalendarManagementPage />} />
-        <Route path="datos" element={canManageSchoolData(user?.role) ? <DataManagementPage /> : <Navigate to="/calendario" replace />} />
+        <Route
+          path="calendario/gestionar"
+          element={
+            <ProtectedRoute required="calendar">
+              <CalendarManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="datos"
+          element={
+            <ProtectedRoute required="ADMIN">
+              <DataManagementPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/*
           Rutas previstas para fases posteriores. No se muestran aún en el menú

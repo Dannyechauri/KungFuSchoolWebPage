@@ -106,10 +106,13 @@ export function CalendarManagementPage() {
     })
   }
 
+  const [creationCounter, setCreationCounter] = useState(0)
+
   function createTarget(kind: 'event-create' | 'rule-create', targetSection: ManagementSection = 'activities') {
     setSaveError(null)
     setNotice(null)
     setSection(targetSection)
+    setCreationCounter((count) => count + 1)
     setFormTarget({ kind, date: madridNowParts().date })
   }
 
@@ -170,6 +173,7 @@ export function CalendarManagementPage() {
 
   async function cancelRule(rule: RecurringRule) {
     if (!window.confirm(`¿Cancelar el horario semanal de «${rule.curso_nombre}» en ${rule.sala_nombre ?? 'sala sin asignar'}? También se cancelarán sus sesiones futuras.`)) return
+    setSaving(true)
     setSaveError(null)
     setNotice(null)
     try {
@@ -178,6 +182,8 @@ export function CalendarManagementPage() {
       setMetadataVersion((version) => version + 1)
     } catch (error) {
       setSaveError(calendarErrorMessage(error))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -262,7 +268,7 @@ export function CalendarManagementPage() {
           ) : (
             <PanelCard className="p-5 md:p-6">
               <ScheduleForm
-                key={`${formTarget.kind}-${formTarget.kind === 'event-edit' ? entityKey(formTarget.event.id_curso_agendado) : formTarget.kind === 'rule-edit' ? entityKey(formTarget.rule.id_horario_recurrente) : formTarget.date}`}
+                key={`${formTarget.kind}-${formTarget.kind === 'event-edit' ? entityKey(formTarget.event.id_curso_agendado) : formTarget.kind === 'rule-edit' ? entityKey(formTarget.rule.id_horario_recurrente) : `${formTarget.date}-${creationCounter}`}`}
                 target={formTarget}
                 courses={courses}
                 instructors={instructors}
@@ -291,7 +297,7 @@ export function CalendarManagementPage() {
           {ruleFormTarget ? (
             <div className="mt-5 border-t border-line pt-5">
               <ScheduleForm
-                key={`${ruleFormTarget.kind}-${ruleFormTarget.kind === 'rule-edit' ? entityKey(ruleFormTarget.rule.id_horario_recurrente) : ruleFormTarget.date}`}
+                key={`${ruleFormTarget.kind}-${ruleFormTarget.kind === 'rule-edit' ? entityKey(ruleFormTarget.rule.id_horario_recurrente) : `${ruleFormTarget.date}-${creationCounter}`}`}
                 target={ruleFormTarget}
                 courses={courses}
                 instructors={instructors}

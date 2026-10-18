@@ -12,7 +12,15 @@ export function HomePage() {
   const [instructors, setInstructors] = useState<Row[]>([])
   const [scheduledCourses, setScheduledCourses] = useState<Row[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [referenceTime] = useState(() => Date.now())
+  const [reloadKey, setReloadKey] = useState(0)
+
+  function retryLoad() {
+    setIsLoading(true)
+    setLoadError(null)
+    setReloadKey((key) => key + 1)
+  }
 
   useEffect(() => {
     let active = true
@@ -27,9 +35,13 @@ export function HomePage() {
       setCourses(loadedCourses)
       setInstructors(loadedInstructors)
       setScheduledCourses(loadedScheduledCourses)
-    }).catch(() => {}).finally(() => { if (active) setIsLoading(false) })
+      setLoadError(null)
+    }).catch((error: unknown) => {
+      if (!active) return
+      setLoadError(error instanceof Error ? error.message : 'No se pudo cargar el resumen.')
+    }).finally(() => { if (active) setIsLoading(false) })
     return () => { active = false }
-  }, [])
+  }, [reloadKey])
 
   const upcomingActivities = useMemo(() => {
     const coursesById = new Map(courses.map((course) => [Number(course.id_curso), course]))
@@ -57,6 +69,12 @@ export function HomePage() {
         Aquí construiremos la vista principal para mostrar la información útil de la escuela y las próximas actividades.
       </p>
 
+      {loadError ? (
+        <div className="mt-8 rounded-soft bg-red/10 p-4" role="alert">
+          <p className="m-0 text-sm font-bold text-red-dark">{loadError}</p>
+          <button className="mt-2 text-sm font-bold underline" type="button" onClick={retryLoad}>Reintentar</button>
+        </div>
+      ) : null}
       {isLoading ? <p className="mt-8 text-muted">Cargando resumen…</p> : <><div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {summaryItems.map((item) => (
           <PanelCard key={item.label} className="p-5">

@@ -49,9 +49,13 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
   const currentRule = target.kind === 'rule-edit' ? target.rule : null
   const initialDate = 'date' in target ? target.date : ''
   const currentRoomId = currentEvent?.id_sala ?? currentRule?.id_sala
+  const currentInstructorId = currentEvent?.id_instructor ?? currentRule?.id_instructor
   const availableRooms = rooms.filter((room) => room.activo || (currentRoomId !== null && currentRoomId !== undefined && entityKey(room.id_sala) === entityKey(currentRoomId)))
   const availableCourses = courses.filter((course) => !isRule || course.tipo_curso === 'HABITUAL')
-  const activeInstructors = instructors.filter((instructor) => instructor.activo !== false)
+  const availableInstructors = instructors.filter((instructor) =>
+    instructor.activo !== false ||
+    (currentInstructorId !== null && currentInstructorId !== undefined && entityKey(instructor.id_instructor) === entityKey(currentInstructorId)),
+  )
 
   function toggleWeekday(weekday: number) {
     setSelectedWeekdays((selected) => selected.includes(weekday)
@@ -126,8 +130,8 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
         </label>
         <label className={labelClass}>
           Instructor
-          <SelectField name="instructorId" defaultValue={entityKey(currentEvent?.id_instructor ?? currentRule?.id_instructor ?? activeInstructors[0]?.id_instructor ?? '')} required>
-            {activeInstructors.map((instructor) => <option key={entityKey(instructor.id_instructor)} value={entityKey(instructor.id_instructor)}>{instructor.nombre}</option>)}
+          <SelectField name="instructorId" defaultValue={entityKey(currentEvent?.id_instructor ?? currentRule?.id_instructor ?? availableInstructors[0]?.id_instructor ?? '')} required>
+            {availableInstructors.map((instructor) => <option key={entityKey(instructor.id_instructor)} value={entityKey(instructor.id_instructor)}>{instructor.nombre}{instructor.activo === false ? ' · Inactivo' : ''}</option>)}
           </SelectField>
         </label>
         <label className={labelClass}>
@@ -193,12 +197,12 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
       </div>
 
       {!availableCourses.length ? <p className="m-0 text-sm font-semibold text-red-dark">Crea primero un curso {isRule ? 'habitual' : ''} para poder programarlo.</p> : null}
-      {!activeInstructors.length ? <p className="m-0 text-sm font-semibold text-red-dark">No hay instructores activos disponibles.</p> : null}
+      {!availableInstructors.length ? <p className="m-0 text-sm font-semibold text-red-dark">No hay instructores disponibles.</p> : null}
       {!availableRooms.some((room) => room.activo || entityKey(room.id_sala) === entityKey(currentRoomId ?? '')) ? <p className="m-0 text-sm font-semibold text-red-dark">Añade una sala activa antes de programar actividades.</p> : null}
       {validationError || error ? <p className="m-0 rounded-soft bg-red/10 p-3 text-sm font-bold text-red-dark" role="alert">{validationError ?? error}</p> : null}
 
       <div className="flex flex-wrap gap-3">
-        <button className="min-h-11 rounded-full bg-red px-5 text-sm font-bold text-white hover:bg-red-dark disabled:opacity-50" type="submit" disabled={saving || !availableCourses.length || !activeInstructors.length || !availableRooms.length}>
+        <button className="min-h-11 rounded-full bg-red px-5 text-sm font-bold text-white hover:bg-red-dark disabled:opacity-50" type="submit" disabled={saving || !availableCourses.length || !availableInstructors.length || !availableRooms.length}>
           {saving ? 'Guardando…' : isEditing ? 'Guardar cambios' : isRule ? 'Crear horario habitual' : 'Añadir a la agenda'}
         </button>
         {target.kind === 'event-edit' && target.event.activo && onCancelEvent ? <button className="min-h-11 rounded-full border border-red px-5 text-sm font-bold text-red-dark disabled:opacity-50" type="button" onClick={() => onCancelEvent(target.event)} disabled={saving}>Cancelar sesión</button> : null}
