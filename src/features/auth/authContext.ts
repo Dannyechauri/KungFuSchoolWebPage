@@ -7,6 +7,8 @@ export type AuthUser = {
   displayName: string
 }
 
+export type WebRole = AuthUser['role']
+
 export type AuthContextValue = {
   user: AuthUser | null
   isCheckingSession: boolean

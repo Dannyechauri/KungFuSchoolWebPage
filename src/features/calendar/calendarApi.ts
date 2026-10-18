@@ -90,7 +90,7 @@ export function getCalendarCourses() {
 }
 
 export function getCalendarInstructors() {
-  return apiRequest<CalendarInstructor[]>('/api/database/tables/instructores/rows?limit=500')
+  return apiRequest<CalendarInstructor[]>('/api/calendar/instructors')
 }
 
 export function getCalendarRooms() {

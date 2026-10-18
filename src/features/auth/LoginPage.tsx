@@ -28,7 +28,7 @@ export function LoginPage() {
         <div className="flex items-center gap-4">
           <img className="size-16 object-contain" src="/logo-instituto-wushu.png" alt="Instituto de Wu-shu de Barcelona" />
           <div>
-            <p className="m-0 text-xs font-black tracking-[0.12em] text-red uppercase">Administración</p>
+            <p className="m-0 text-xs font-black tracking-[0.12em] text-red uppercase">Acceso interno</p>
             <h1 className="mt-1 text-2xl font-bold text-ink">Instituto de Wu-shu</h1>
           </div>
         </div>
@@ -42,7 +42,7 @@ export function LoginPage() {
             Contraseña
             <input className="min-h-12 rounded-soft border border-line bg-white px-3 text-ink" name="password" type="password" autoComplete="current-password" required />
           </label>
-          {error ? <p className="m-0 rounded-soft bg-red/10 p-3 text-sm font-bold text-red-dark">{error}</p> : null}
+          {error ? <p className="m-0 rounded-soft bg-red/10 p-3 text-sm font-bold text-red-dark" role="alert">{error}</p> : null}
           <button className="min-h-12 rounded-full bg-red px-5 font-bold text-white hover:bg-red-dark disabled:cursor-not-allowed disabled:opacity-60" type="submit" disabled={isSubmitting}>
             {isSubmitting ? 'Accediendo…' : 'Iniciar sesión'}
           </button>

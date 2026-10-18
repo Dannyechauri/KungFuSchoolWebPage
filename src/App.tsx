@@ -7,6 +7,7 @@ import { AppLayout } from './layouts/AppLayout'
 import { CalendarPage } from './pages/CalendarPage'
 import { DataManagementPage } from './pages/DataManagementPage'
 import { HomePage } from './pages/HomePage'
+import { canManageSchoolData } from './features/auth/permissions'
 
 function AuthenticatedApp() {
   const { user, isCheckingSession } = useAuth()
@@ -22,10 +23,10 @@ function AuthenticatedApp() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route index element={<HomePage />} />
+        <Route index element={user?.role === 'INSTRUCTOR' ? <Navigate to="/calendario" replace /> : <HomePage />} />
         <Route path="calendario" element={<CalendarPage />} />
         <Route path="calendario/gestionar" element={<CalendarManagementPage />} />
-        <Route path="datos" element={<DataManagementPage />} />
+        <Route path="datos" element={canManageSchoolData(user?.role) ? <DataManagementPage /> : <Navigate to="/calendario" replace />} />
 
         {/*
           Rutas previstas para fases posteriores. No se muestran aún en el menú

@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router'
 import { PanelCard } from '../../components/PanelCard'
 import { SelectField } from '../../components/SelectField'
 import { useAuth } from '../auth/useAuth'
+import { canManageCalendar } from '../auth/permissions'
 import {
   entityKey,
   getCalendarEvents,
@@ -262,7 +263,7 @@ function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent }: {
 
 export function CalendarPage() {
   const { user } = useAuth()
-  const canManage = user?.role === 'ADMIN' || user?.role === 'INSTRUCTOR'
+  const canManage = canManageCalendar(user?.role)
   const navigate = useNavigate()
   const location = useLocation()
   const navigationState = location.state as CalendarNavigationState | null

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { apiRequest } from '../../api/client'
 import { AuthContext, type AuthUser } from './authContext'
+import { canUseWeb } from './permissions'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
@@ -11,7 +12,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     void apiRequest<AuthUser>('/api/auth/me')
       .then((currentUser) => {
-        if (active) setUser(currentUser)
+        if (!active) return
+        if (canUseWeb(currentUser.role)) {
+          setUser(currentUser)
+          return
+        }
+        setUser(null)
+        void apiRequest('/api/auth/logout', { method: 'DELETE' }).catch(() => undefined)
       })
       .catch(() => {
         if (active) setUser(null)
@@ -30,6 +37,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     })
+    if (!canUseWeb(currentUser.role)) {
+      await apiRequest('/api/auth/logout', { method: 'DELETE' }).catch(() => undefined)
+      throw new Error('La web está reservada al administrador y al equipo docente. Usa la aplicación de alumnos.')
+    }
     setUser(currentUser)
   }, [])
 

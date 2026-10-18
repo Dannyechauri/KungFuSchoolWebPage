@@ -106,6 +106,7 @@ El recorrido de arranque es `index.html` → `src/main.tsx` → `src/App.tsx`.
 ## Comprobaciones
 
 ```bash
+npm test
 npm run lint
 npm run build
 ```
@@ -117,6 +118,8 @@ npm run preview
 ```
 
 Las pruebas del backend están en su propio repositorio. Desde `KungFuBackendService/backend-service`, ejecutar `npm run typecheck`, `npm run lint` y `npm test`.
+
+Las pruebas de interfaz de la prealfa cubren los permisos de navegación, la gestión del calendario para instructores y el rechazo de cuentas `USER` en la web. Los alumnos conservan su rol de API para la app móvil futura; no se admiten en la interfaz web.
 
 El entorno se ha comprobado localmente en macOS. La instalación y ejecución en Windows siguen pendientes de validación real.
 

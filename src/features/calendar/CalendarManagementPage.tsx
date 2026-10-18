@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router'
 import { PanelCard } from '../../components/PanelCard'
 import { SelectField } from '../../components/SelectField'
 import { useAuth } from '../auth/useAuth'
+import { canManageCalendar } from '../auth/permissions'
 import {
   cancelCalendarEvent,
   cancelRecurringRule,
@@ -55,8 +56,7 @@ function calendarStateForEvent(startAt: string, previous?: CalendarPageState): C
 
 export function CalendarManagementPage() {
   const { user } = useAuth()
-  const canManage = user?.role === 'ADMIN' || user?.role === 'INSTRUCTOR'
-  const isAdmin = user?.role === 'ADMIN'
+  const canManage = canManageCalendar(user?.role)
   const navigate = useNavigate()
   const location = useLocation()
   const navigationState = location.state as CalendarNavigationState | null
@@ -220,7 +220,7 @@ export function CalendarManagementPage() {
     { id: 'activities', label: 'Actividades' },
     { id: 'rules', label: 'Horarios habituales' },
     { id: 'courses', label: 'Cursos' },
-    ...(isAdmin ? [{ id: 'rooms' as const, label: 'Salas' }] : []),
+    { id: 'rooms' as const, label: 'Salas' },
   ]
 
   return (
@@ -354,7 +354,7 @@ export function CalendarManagementPage() {
         </PanelCard>
       ) : null}
 
-      {section === 'rooms' && isAdmin ? (
+      {section === 'rooms' ? (
         <PanelCard className="mt-5 p-5 md:p-6">
           <h2 className="m-0 text-xl font-bold text-ink">Salas</h2>
           <p className="mt-1 text-sm text-muted">Las salas con actividades futuras deben vaciarse antes de desactivarlas.</p>
