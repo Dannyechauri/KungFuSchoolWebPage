@@ -13,7 +13,7 @@ import { createServer as createViteServer } from 'vite';
 const { Client } = pg;
 const DATABASE_NAME = 'kungfu_school_dev';
 const DATABASE_COMMENT = 'instituto-wushu:development:v1';
-const SEED_VERSION = 'school-data-v5-multi-room-schedule';
+const SEED_VERSION = 'school-data-v6-multi-session-courses';
 const FRONT_DIRECTORY = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BACKEND_DIRECTORY = path.resolve(FRONT_DIRECTORY, '../KungFuBackendService/backend-service');
 const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
@@ -341,10 +341,11 @@ async function seedDatabase(configuration) {
       }
 
       const specialSessions = [
-        [5, 5, 1, 5, 10, 31 * 60, 2, true],
+        [5, 5, 1, 5, 10, 3 * 60, 2, true],
+        [5, 5, 1, 6, 10, 3 * 60, 2, true],
         [6, 2, 2, 5, 9, 8 * 60, 1, true],
         [7, 7, 3, 4, 15, 3 * 60, 0, true],
-        [5, 5, 3, 5, 10, 31 * 60, 2, false],
+        [5, 5, 3, 5, 10, 3 * 60, 2, false],
       ];
       for (const [courseIndex, instructorIndex, weekOffset, weekday, hour, durationMinutes, roomIndex, active] of specialSessions) {
         const start = dateTimeOnWeekday(weekOffset, weekday, hour, 0);

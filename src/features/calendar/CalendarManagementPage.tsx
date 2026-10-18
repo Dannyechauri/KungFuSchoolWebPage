@@ -259,7 +259,7 @@ export function CalendarManagementPage() {
           {!formTarget ? (
             <PanelCard className="p-5 md:p-6">
               <h2 className="m-0 text-xl font-bold text-ink">Programar actividad</h2>
-              <p className="mt-1 text-sm text-muted">Crea una sesión puntual o define una clase habitual que se repita por días de la semana.</p>
+              <p className="mt-1 text-sm text-muted">Cada sesión puntual corresponde a una fecha. Para un curso de varios días, añade una sesión por día y reutiliza el mismo curso.</p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <button className={`${buttonClass} bg-red text-white`} type="button" onClick={() => createTarget('event-create')}>+ Sesión puntual</button>
                 <button className={`${buttonClass} border border-red text-red-dark`} type="button" onClick={() => createTarget('rule-create')}>+ Horario habitual</button>

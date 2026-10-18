@@ -46,6 +46,7 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
   const [validationError, setValidationError] = useState<string | null>(null)
   const [selectedWeekdays, setSelectedWeekdays] = useState<number[]>(target.kind === 'rule-edit' ? [target.rule.dia_semana] : [])
   const currentEvent = target.kind === 'event-edit' ? target.event : null
+  const currentEventSpansDates = Boolean(currentEvent && currentEvent.fecha_hora.slice(0, 10) !== currentEvent.fecha_hora_fin.slice(0, 10))
   const currentRule = target.kind === 'rule-edit' ? target.rule : null
   const initialDate = 'date' in target ? target.date : ''
   const currentRoomId = currentEvent?.id_sala ?? currentRule?.id_sala
@@ -103,8 +104,9 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
       return
     }
 
-    const startAt = `${String(data.get('startDate'))}T${String(data.get('startTime'))}:00`
-    const endAt = `${String(data.get('endDate'))}T${String(data.get('endTime'))}:00`
+    const sessionDate = String(data.get('sessionDate'))
+    const startAt = `${sessionDate}T${String(data.get('startTime'))}:00`
+    const endAt = `${sessionDate}T${String(data.get('endTime'))}:00`
     if (endAt <= startAt) {
       setValidationError('El final debe ser posterior al inicio.')
       return
@@ -119,6 +121,7 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
           {target.kind === 'event-edit' ? 'Editar sesión' : target.kind === 'rule-edit' ? 'Editar horario habitual' : 'Programar actividad'}
         </h2>
         {currentEvent?.id_horario_recurrente ? <p className="mt-1 text-sm text-muted">Este cambio afecta solo a esta sesión, no al resto de la regla semanal.</p> : null}
+        {currentEventSpansDates ? <p className="mt-1 rounded-soft bg-gold/15 p-3 text-sm text-red-dark" role="status">Este registro antiguo abarca varias fechas. Al guardarlo quedará como una sesión en la fecha de inicio; crea otra sesión para cada día restante.</p> : null}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -177,16 +180,12 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
         ) : (
           <>
             <label className={labelClass}>
-              Fecha de inicio
-              <input className={inputClass} name="startDate" type="date" defaultValue={currentEvent?.fecha_hora.slice(0, 10) ?? initialDate} required />
+              Fecha de la sesión
+              <input className={inputClass} name="sessionDate" type="date" defaultValue={currentEvent?.fecha_hora.slice(0, 10) ?? initialDate} required />
             </label>
             <label className={labelClass}>
               Hora de inicio
               <input className={inputClass} name="startTime" type="time" defaultValue={currentEvent?.fecha_hora.slice(11, 16) ?? '18:30'} required />
-            </label>
-            <label className={labelClass}>
-              Fecha de fin
-              <input className={inputClass} name="endDate" type="date" defaultValue={currentEvent?.fecha_hora_fin.slice(0, 10) ?? initialDate} required />
             </label>
             <label className={labelClass}>
               Hora de fin

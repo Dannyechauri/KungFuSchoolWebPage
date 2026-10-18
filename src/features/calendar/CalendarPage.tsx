@@ -67,6 +67,15 @@ function eventTimeRange(event: CalendarEvent) {
   return `${formatCalendarDate(startDate, { day: 'numeric', month: 'short' })} ${formatTime(event.fecha_hora)} – ${formatCalendarDate(endDate, { day: 'numeric', month: 'short' })} ${formatTime(event.fecha_hora_fin)}`
 }
 
+function eventTimeRangeForDay(event: CalendarEvent, day: string) {
+  const startDate = event.fecha_hora.slice(0, 10)
+  const endDate = event.fecha_hora_fin.slice(0, 10)
+  if (startDate === endDate) return `${formatTime(event.fecha_hora)}–${formatTime(event.fecha_hora_fin)}`
+  if (day === startDate) return `Desde ${formatTime(event.fecha_hora)}`
+  if (day === endDate) return `Hasta ${formatTime(event.fecha_hora_fin)}`
+  return 'Durante el día'
+}
+
 function eventRoom(event: CalendarEvent) {
   return event.sala_nombre ?? 'Sala sin asignar'
 }
@@ -193,25 +202,22 @@ function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent }: {
 
   return (
     <div className="grid gap-4">
-      {spanningEvents.length ? (
-        <section className="rounded-soft border border-gold/50 bg-gold/10 p-4">
-          <h3 className="m-0 text-sm font-black uppercase tracking-wide text-red-dark">Actividades de varios días</h3>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
-            {spanningEvents.map((event) => (
-              <CalendarEventCard key={entityKey(event.id_curso_agendado)} event={event} onSelect={() => onSelectEvent(event)} />
-            ))}
-          </div>
-        </section>
-      ) : null}
       <div className="overflow-x-auto overflow-y-clip rounded-soft border border-line bg-white/70">
         <div className="min-w-[76rem]">
           <div className="grid grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] border-b border-line bg-paper/70">
             <div />
             {weekKeys.map((day, index) => (
-              <button key={day} className="border-l border-line px-2 py-3 text-center hover:bg-gold/10" type="button" onClick={() => onSelectDay(day)}>
-                <span className="block text-xs font-black uppercase tracking-wide text-red-dark">{weekdays[index]?.label}</span>
-                <strong className="mt-1 block text-lg text-ink">{formatCalendarDate(day, { day: 'numeric', month: 'short' })}</strong>
-              </button>
+              <div key={day} className="border-l border-line">
+                <button className="w-full px-2 py-3 text-center hover:bg-gold/10" type="button" onClick={() => onSelectDay(day)}>
+                  <span className="block text-xs font-black uppercase tracking-wide text-red-dark">{weekdays[index]?.label}</span>
+                  <strong className="mt-1 block text-lg text-ink">{formatCalendarDate(day, { day: 'numeric', month: 'short' })}</strong>
+                </button>
+                {spanningEvents.filter((event) => event.fecha_hora.slice(0, 10) === day).map((event) => (
+                  <div key={entityKey(event.id_curso_agendado)} className="px-1 pb-2">
+                    <CalendarEventCard event={event} onSelect={() => onSelectEvent(event)} compact />
+                  </div>
+                ))}
+              </div>
             ))}
           </div>
           <div className="grid grid-cols-[3.5rem_repeat(7,minmax(0,1fr))]">
@@ -443,7 +449,7 @@ export function CalendarPage() {
                     <div className="mt-2 grid gap-1">
                       {dayActivities.slice(0, 3).map((activity) => (
                         <button key={entityKey(activity.id_curso_agendado)} className={`truncate rounded-full border px-2 py-1 text-left text-[0.68rem] font-bold ${courseColor(activity.id_curso).border} ${activity.activo ? `${courseColor(activity.id_curso).surface} ${courseColor(activity.id_curso).text}` : 'bg-line text-muted line-through'}`} type="button" onClick={() => setSelectedEvent(activity)}>
-                          {formatTime(activity.fecha_hora)} {activity.curso_nombre} · {eventRoom(activity)}
+                          {eventTimeRangeForDay(activity, day)} {activity.curso_nombre} · {eventRoom(activity)}
                         </button>
                       ))}
                       {dayActivities.length > 3 ? <button className="text-left text-xs font-bold text-red-dark" type="button" onClick={() => setSelectedDate(day)}>+{dayActivities.length - 3} más</button> : null}
