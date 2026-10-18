@@ -116,16 +116,18 @@ export function DataManagementPage() {
   useEffect(() => {
     let active = true
     if (!isAdmin || !table) return () => { active = false }
-    apiRequest<Column[]>(`/api/database/tables/${encodeURIComponent(table)}/columns`)
-      .then((loadedColumns) => {
+    Promise.all([
+      apiRequest<Column[]>(`/api/database/tables/${encodeURIComponent(table)}/columns`),
+      apiRequest<Row[]>(`/api/database/tables/${encodeURIComponent(table)}/rows?limit=500`),
+    ])
+      .then(([loadedColumns, loadedRows]) => {
         if (!active) return
         setColumns(loadedColumns)
+        setRows(loadedRows)
         setReferenceError(null)
+        setError(null)
       })
-      .catch((loadError: unknown) => { if (active) setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar las columnas.') })
-    apiRequest<Row[]>(`/api/database/tables/${encodeURIComponent(table)}/rows?limit=500`)
-      .then((loadedRows) => { if (active) setRows(loadedRows) })
-      .catch((loadError: unknown) => { if (active) setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar los registros.') })
+      .catch((loadError: unknown) => { if (active) setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar el esquema y los registros.') })
       .finally(() => { if (active) setIsLoading(false) })
     return () => { active = false }
   }, [isAdmin, reloadVersion, table])
@@ -228,7 +230,7 @@ export function DataManagementPage() {
       {isTableListLoading ? <p className="mt-5 text-sm text-muted">Cargando tablas…</p> : null}
 
       <div className="mt-7 flex flex-wrap gap-2">
-        {tables.map((name) => <button key={name} className={`rounded-full px-4 py-2 text-sm font-bold ${table === name ? 'bg-red text-white' : 'border border-line bg-paper text-muted'}`} type="button" onClick={() => { setIsLoading(true); setError(null); setEditingRow(null); setIsCreating(false); setTable(name) }}>{tableLabel(name)}</button>)}
+        {tables.map((name) => <button key={name} className={`rounded-full px-4 py-2 text-sm font-bold ${table === name ? 'bg-red text-white' : 'border border-line bg-paper text-muted'}`} type="button" onClick={() => { setIsLoading(true); setError(null); setRows([]); setColumns([]); setReferencedTables({ owner: '', values: {} }); setEditingRow(null); setIsCreating(false); setTable(name) }}>{tableLabel(name)}</button>)}
       </div>
 
       {table ? (
