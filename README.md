@@ -54,7 +54,11 @@ Para borrar únicamente esta base local marcada por el proyecto y crearla de nue
 
 Este comando no puede eliminar una base con el mismo nombre que no haya sido creada por el lanzador.
 
+<<<<<<< Updated upstream
 Los datos iniciales incluyen un administrador, 50 alumnos, 10 instructores, 8 estilos, 70 formas, grados con sus formas requeridas, clases diarias, formas y técnica, preparación física, Sanda y especializaciones programadas durante las cuatro semanas siguientes. La cuenta de demostración es `admin@wushu.test` con contraseña `WushuDemo2026!`; es exclusiva para esta base local y ficticia.
+=======
+Los datos iniciales incluyen un administrador, 50 alumnos, 10 instructores, 3 salas, 8 estilos, 70 formas, grados con sus formas requeridas, clases habituales con duración (incluidas clases simultáneas en salas distintas), cursos especiales de fin de semana y una actividad cancelada. La cuenta de demostración es `admin@wushu.test` con contraseña `WushuDemo2026!`; es exclusiva para esta base local y ficticia. Los 10 instructores son alumnos con `es_instructor`; alumnos e instructores entran con su correo y su nombre en minúsculas, sin acentos ni espacios (por ejemplo `chen.wei@wushu.test` / `chenwei`).
+>>>>>>> Stashed changes
 
 Hace falta instalar una vez PostgreSQL local y Java 21 además de Node. En macOS el usuario por defecto de PostgreSQL es el mismo usuario del sistema; en Windows es normalmente `postgres`. Si ese usuario tiene contraseña, copiar `.env.example` como `.env.dev.local` y completar `DEV_DB_USER` y `DEV_DB_PASSWORD`. Este archivo está ignorado por Git. Se puede indicar `DEV_JAVA_HOME` en ese mismo archivo si Java 21 no está disponible desde la terminal.
 
@@ -115,7 +119,13 @@ npm run build
 npm run preview
 ```
 
+<<<<<<< Updated upstream
 No hay todavía una suite de tests; se decidirá al construir las funcionalidades.
+=======
+Las pruebas del backend están en su propio repositorio. Desde `KungFuBackendService/backend-service`, ejecutar `npm run typecheck`, `npm run lint` y `npm test`.
+
+Las pruebas de interfaz de la prealfa cubren los permisos de navegación, la gestión de agenda del instructor (sin cursos ni salas, reservados al administrador) y el acceso de las cuentas `USER` al calendario en solo lectura. Alumnos e instructores tienen además «Mi ficha» (`/mi-ficha`), con sus datos, su grado, las formas que saben y las formas obligatorias y opcionales de su grado, donde marcan las que están aprendiendo y su porcentaje de avance (llegar al 100 % no la registra como sabida: eso lo hace la administración). En el detalle de cada actividad pueden apuntarse o quitarse (solo ese día o toda la serie en las clases habituales); los instructores eligen si participan como alumno o como instructor y ven la lista de participantes. El administrador fija en el formulario de sesiones y horarios el límite de plazas y si los alumnos ven el número de asistentes. Al seleccionar una actividad en el calendario, el administrador y los instructores pueden editarla ahí mismo («Editar sesión»), y en las clases habituales también todo su horario («Editar horario habitual»); el límite de plazas y la visibilidad de asistentes solo los cambia el administrador.
+>>>>>>> Stashed changes
 
 El entorno se ha comprobado localmente en macOS. La instalación y ejecución en Windows siguen pendientes de validación real.
 

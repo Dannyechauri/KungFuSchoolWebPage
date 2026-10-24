@@ -250,20 +250,21 @@ async function seedDatabase(configuration) {
         }
       }
       const grades = [
-        ['Cinta Blanca', 1, 'Blanco', []],
-        ['Cinta Amarilla', 2, 'Amarillo', ['Lian Bu Quan', 'Siu Nim Tao']],
-        ['Cinta Naranja', 3, 'Naranja', ['Gong Li Quan', 'Mui Fa Kuen', 'Forma Yang de 13 movimientos', 'Siu Nim Tao']],
-        ['Cinta Verde', 4, 'Verde', ['Xiao Hong Quan', 'Lau Gar Kuen', 'Chum Kiu', 'Wu Xing Quan', 'Beng Bu Quan', 'Xiao Baji']],
-        ['Cinta Azul', 5, 'Azul', ['Da Hong Quan', 'Gung Ji Fuk Fu Kuen', 'Forma Yang de 16 movimientos', 'Biu Jee', 'Lian Huan Quan', 'Luan Jie Quan', 'Lao Ba Zhang', 'Da Baji']],
-        ['Cinta Marrón', 6, 'Marrón', ['Cha Quan', 'Fu Hok Seung Ying Kuen', 'Forma tradicional Yang (108 movimientos)', 'Shi Er Xing', 'Ba Zhou', 'Ding Shi Ba Zhang', 'Bastón (Gun) · Shaolin del Norte', 'Bastón largo (Luk Dim Boon Gwan) · Wing Chun', 'Lanza · Xingyiquan', 'Lanza · Bajiquan']],
-        ['Cinta Negra I Dan', 7, 'Negro', ['Tit Sin Kuen', 'Forma Yang de 49 movimientos', 'Bastón largo · Hung Gar', 'Espada (Jian) · Taijiquan estilo Yang', 'Cuchillos mariposa (Baat Jaam Do) · Wing Chun', 'Espada · Xingyiquan', 'Látigo de nueve secciones · Tanglangquan', 'Cuchillos de cuerno de ciervo · Baguazhang', 'Gancho de tigre · Hung Gar', 'Sable · Baguazhang', 'Espada · Bajiquan', 'Alabarda (Pu Dao) · Shaolin del Norte']],
+        ['Cinta Blanca', 1, 'Blanco', [], []],
+        ['Cinta Amarilla', 2, 'Amarillo', ['Lian Bu Quan', 'Siu Nim Tao'], ['Mei Hua Lu']],
+        ['Cinta Naranja', 3, 'Naranja', ['Gong Li Quan', 'Mui Fa Kuen', 'Forma Yang de 13 movimientos', 'Siu Nim Tao'], ['Za Shi Chui', 'Sable (Dao) · Shaolin del Norte']],
+        ['Cinta Verde', 4, 'Verde', ['Xiao Hong Quan', 'Lau Gar Kuen', 'Chum Kiu', 'Wu Xing Quan', 'Beng Bu Quan', 'Xiao Baji'], ['Zhai Yao', 'Abanico · Taijiquan estilo Yang']],
+        ['Cinta Azul', 5, 'Azul', ['Da Hong Quan', 'Gung Ji Fuk Fu Kuen', 'Forma Yang de 16 movimientos', 'Biu Jee', 'Lian Huan Quan', 'Luan Jie Quan', 'Lao Ba Zhang', 'Da Baji'], ['Forma Yang de demostración', 'Sable mariposa · Hung Gar']],
+        ['Cinta Marrón', 6, 'Marrón', ['Cha Quan', 'Fu Hok Seung Ying Kuen', 'Forma tradicional Yang (108 movimientos)', 'Shi Er Xing', 'Ba Zhou', 'Ding Shi Ba Zhang', 'Bastón (Gun) · Shaolin del Norte', 'Bastón largo (Luk Dim Boon Gwan) · Wing Chun', 'Lanza · Xingyiquan', 'Lanza · Bajiquan'], ['Ba Shi Quan', 'You Shen Ba Gua Zhang']],
+        ['Cinta Negra I Dan', 7, 'Negro', ['Tit Sin Kuen', 'Forma Yang de 49 movimientos', 'Bastón largo · Hung Gar', 'Espada (Jian) · Taijiquan estilo Yang', 'Cuchillos mariposa (Baat Jaam Do) · Wing Chun', 'Espada · Xingyiquan', 'Látigo de nueve secciones · Tanglangquan', 'Cuchillos de cuerno de ciervo · Baguazhang', 'Gancho de tigre · Hung Gar', 'Sable · Baguazhang', 'Espada · Bajiquan', 'Alabarda (Pu Dao) · Shaolin del Norte'], ['Liu Shi Si Zhang', 'Tian Gan Quan']],
       ];
       const gradeIds = new Map();
-      for (const [name, order, beltColor, requiredFormNames] of grades) {
+      for (const [name, order, beltColor, requiredFormNames, optionalFormNames] of grades) {
         const result = await client.query('INSERT INTO grados (nombre, orden_grado, color_cinturon, formas_requeridas) VALUES ($1, $2, $3, $4) ON CONFLICT (orden_grado) DO UPDATE SET nombre = EXCLUDED.nombre, color_cinturon = EXCLUDED.color_cinturon, formas_requeridas = EXCLUDED.formas_requeridas RETURNING id_grado', [name, order, beltColor, requiredFormNames.length]);
         const gradeId = result.rows[0].id_grado;
         gradeIds.set(name, gradeId);
         for (const formName of requiredFormNames) await client.query('INSERT INTO grado_forma (id_grado, id_forma, es_opcional) VALUES ($1, $2, FALSE) ON CONFLICT DO NOTHING', [gradeId, formIds.get(formName)]);
+        for (const formName of optionalFormNames) await client.query('INSERT INTO grado_forma (id_grado, id_forma, es_opcional) VALUES ($1, $2, TRUE) ON CONFLICT DO NOTHING', [gradeId, formIds.get(formName)]);
       }
 
       const passwordHash = await bcrypt.hash('WushuDemo2026!', 12);
@@ -276,8 +277,10 @@ async function seedDatabase(configuration) {
         ['Lucía Martín', '2022-09-15', ['Taijiquan estilo Yang', 'Baguazhang'], 'lucia.martin@wushu.test'], ['Zhang Wei', '2023-02-15', ['Wing Chun', 'Tanglangquan'], 'zhang.wei@wushu.test'],
       ];
       const instructorIds = [];
-      for (const [name, hiredAt, specialties, email] of instructors) {
-        const result = await client.query('INSERT INTO instructores (nombre, fecha_contratacion, activo, especialidad, correo_electronico, password_hash) VALUES ($1, $2, TRUE, $3, $4, $5) RETURNING id_instructor', [name, hiredAt, specialties.join(' · '), email, passwordHash]);
+      for (const [index, [name, hiredAt, specialties, email]] of instructors.entries()) {
+        // Cada instructor es un alumno con es_instructor; el trigger crea su registro en instructores.
+        const account = await client.query('INSERT INTO alumnos (numero_matricula, fecha_ingreso, activo, id_grado, correo_electronico, password_hash, nombre, es_instructor) VALUES ($1, $2, TRUE, $3, $4, NULL, $5, TRUE) RETURNING id_alumno', ['WSI-' + String(index + 1).padStart(2, '0'), hiredAt, gradeIds.get(grades[grades.length - 1][0]), email, name]);
+        const result = await client.query('UPDATE instructores SET fecha_contratacion = $2, especialidad = $3 WHERE id_alumno = $1 RETURNING id_instructor', [account.rows[0].id_alumno, hiredAt, specialties.join(' · ')]);
         const instructorId = result.rows[0].id_instructor;
         instructorIds.push(instructorId);
         for (const styleName of specialties) await client.query('INSERT INTO instructor_estilo (id_instructor, id_estilo) VALUES ($1, $2)', [instructorId, styleIds.get(styleName)]);
@@ -293,7 +296,7 @@ async function seedDatabase(configuration) {
       const studentIds = [];
       for (const [index, name] of studentNames.entries()) {
         const grade = grades[(index % (grades.length - 1)) + 1];
-        const result = await client.query('INSERT INTO alumnos (numero_matricula, fecha_ingreso, activo, fecha_nacimiento, id_grado, correo_electronico, password_hash, nombre) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id_alumno', ['WSB-' + String(index + 1).padStart(3, '0'), joinedAtFor(index), index % 13 !== 0, birthdayFor(index), gradeIds.get(grade[0]), 'alumno.' + String(index + 1).padStart(2, '0') + '@wushu.test', passwordHash, name]);
+        const result = await client.query('INSERT INTO alumnos (numero_matricula, fecha_ingreso, activo, fecha_nacimiento, id_grado, correo_electronico, password_hash, nombre) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id_alumno', ['WSB-' + String(index + 1).padStart(3, '0'), joinedAtFor(index), index % 13 !== 0, birthdayFor(index), gradeIds.get(grade[0]), 'alumno.' + String(index + 1).padStart(2, '0') + '@wushu.test', null, name]);
         studentIds.push(result.rows[0].id_alumno);
         for (const formName of grade[3].slice(0, Math.min(grade[3].length, 2 + (index % 4)))) await client.query('INSERT INTO alumno_forma (id_alumno, id_forma, fecha_aprendida) VALUES ($1, $2, $3)', [result.rows[0].id_alumno, formIds.get(formName), joinedAtFor(Math.max(0, index - 2))]);
       }
@@ -351,12 +354,12 @@ async function seedDatabase(configuration) {
 }
 
 async function startFrontend() {
-  process.env.VITE_API_URL = 'http://127.0.0.1:8080';
   viteServer = await createViteServer({ root: FRONT_DIRECTORY, server: { host: '127.0.0.1', port: 8000, strictPort: true } });
   await viteServer.listen();
   console.log('\nAplicación disponible en http://127.0.0.1:8000');
   console.log(`Base activa: ${DATABASE_NAME}`);
   console.log('Acceso de demostración: admin@wushu.test / WushuDemo2026!');
+  console.log('Alumnos e instructores: su correo y su nombre en minúsculas, sin acentos ni espacios (p. ej. chen.wei@wushu.test / chenwei).');
   console.log('Pulsa Ctrl+C para detener el front y el backend.\n');
 }
 

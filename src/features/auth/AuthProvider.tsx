@@ -30,6 +30,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     })
+<<<<<<< Updated upstream
+=======
+    if (!canUseWeb(currentUser.role)) {
+      await apiRequest('/api/auth/logout', { method: 'DELETE' }).catch(() => undefined)
+      throw new Error('Esta cuenta no tiene acceso a la web.')
+    }
+>>>>>>> Stashed changes
     setUser(currentUser)
   }, [])
 

@@ -5,6 +5,8 @@ export type AuthUser = {
   role: 'ADMIN' | 'USER'
   userId: number
   displayName: string
+  studentId?: number | null
+  instructorId?: number | null
 }
 
 export type AuthContextValue = {

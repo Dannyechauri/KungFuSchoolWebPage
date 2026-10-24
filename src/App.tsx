@@ -6,6 +6,7 @@ import { AppLayout } from './layouts/AppLayout'
 import { CalendarPage } from './pages/CalendarPage'
 import { DataManagementPage } from './pages/DataManagementPage'
 import { HomePage } from './pages/HomePage'
+import { ProfilePage } from './pages/ProfilePage'
 
 function AuthenticatedApp() {
   const { user, isCheckingSession } = useAuth()
@@ -21,9 +22,38 @@ function AuthenticatedApp() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
+<<<<<<< Updated upstream
         <Route index element={<HomePage />} />
         <Route path="calendario" element={<CalendarPage />} />
         <Route path="datos" element={<DataManagementPage />} />
+=======
+        <Route index element={user?.role === 'ADMIN' ? <HomePage /> : <Navigate to="/calendario" replace />} />
+        <Route path="calendario" element={<CalendarPage />} />
+        <Route
+          path="calendario/gestionar"
+          element={
+            <ProtectedRoute required="calendar">
+              <CalendarManagementPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="mi-ficha"
+          element={
+            <ProtectedRoute required="profile">
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="datos"
+          element={
+            <ProtectedRoute required="ADMIN">
+              <DataManagementPage />
+            </ProtectedRoute>
+          }
+        />
+>>>>>>> Stashed changes
 
         {/*
           Rutas previstas para fases posteriores. No se muestran aún en el menú

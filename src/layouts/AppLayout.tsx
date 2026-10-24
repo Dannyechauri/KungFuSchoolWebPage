@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router'
 import { useAuth } from '../features/auth/useAuth'
+<<<<<<< Updated upstream
 
 const navigationItems = [
   { to: '/', label: 'Inicio', icon: '館' },
@@ -9,6 +10,25 @@ const navigationItems = [
 
 export function AppLayout() {
   const { user, logout } = useAuth()
+=======
+import { canManageSchoolData, hasOwnProfile } from '../features/auth/permissions'
+
+const navigationItems = {
+  home: { to: '/', label: 'Inicio', icon: '館' },
+  calendar: { to: '/calendario', label: 'Calendario', icon: '日' },
+  profile: { to: '/mi-ficha', label: 'Mi ficha', icon: '形' },
+  data: { to: '/datos', label: 'Datos', icon: '録' },
+}
+
+export function AppLayout() {
+  const { user, logout } = useAuth()
+  const items = [
+    ...(user?.role === 'ADMIN' ? [navigationItems.home] : []),
+    ...(hasOwnProfile(user?.role) ? [navigationItems.profile] : []),
+    navigationItems.calendar,
+    ...(canManageSchoolData(user?.role) ? [navigationItems.data] : []),
+  ]
+>>>>>>> Stashed changes
 
   return (
     <div className="grid min-h-screen md:grid-cols-[18.25rem_minmax(0,1fr)]">
