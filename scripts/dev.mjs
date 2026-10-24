@@ -4,7 +4,7 @@ import { userInfo } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 
 import bcrypt from 'bcryptjs';
 import pg from 'pg';
@@ -52,7 +52,6 @@ function getConfiguration() {
     port,
     user: value('DEV_DB_USER', process.platform === 'win32' ? 'postgres' : userInfo().username),
     password: value('DEV_DB_PASSWORD'),
-    javaHome: value('DEV_JAVA_HOME') || process.env.JAVA_HOME,
   };
 }
 
@@ -99,26 +98,6 @@ async function resetDevelopmentDatabase(configuration) {
   });
 }
 
-function findJava(configuration) {
-  const candidates = [
-    configuration.javaHome,
-    process.platform === 'darwin' ? '/opt/homebrew/opt/openjdk@21' : undefined,
-    process.platform === 'darwin' ? '/usr/local/opt/openjdk@21' : undefined,
-  ].filter(Boolean);
-  for (const javaHome of candidates) {
-    const executable = path.join(javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
-    if (existsSync(executable) && isJava21(executable)) return { executable, javaHome };
-  }
-  const executable = process.platform === 'win32' ? 'java.exe' : 'java';
-  if (isJava21(executable)) return { executable, javaHome: undefined };
-  throw new Error('No se ha encontrado Java 21. Instálalo y déjalo disponible en la terminal, o define DEV_JAVA_HOME en .env.dev.local.');
-}
-
-function isJava21(executable) {
-  const result = spawnSync(executable, ['-version'], { encoding: 'utf8' });
-  return result.status === 0 && `${result.stdout}\n${result.stderr}`.includes('version "21');
-}
-
 async function assertPortFree(port) {
   await new Promise((resolve, reject) => {
     const server = createNetServer();
@@ -127,10 +106,11 @@ async function assertPortFree(port) {
   });
 }
 
-function startBackend(configuration, java) {
+function startBackend(configuration) {
   if (!existsSync(BACKEND_DIRECTORY)) throw new Error(`No se ha encontrado el backend en ${BACKEND_DIRECTORY}. Comprueba que el submódulo esté inicializado.`);
   const environment = {
     ...process.env,
+    NODE_ENV: 'development',
     DB_HOST: configuration.host,
     DB_PORT: String(configuration.port),
     DB_NAME: DATABASE_NAME,
@@ -138,13 +118,12 @@ function startBackend(configuration, java) {
     DB_PASSWORD: configuration.password,
     SERVER_ADDRESS: '127.0.0.1',
     SERVER_PORT: '8080',
-    ...(java.javaHome ? { JAVA_HOME: java.javaHome } : {}),
   };
-  const command = process.platform === 'win32' ? process.env.ComSpec ?? 'cmd.exe' : 'sh';
-  const argumentsForCommand = process.platform === 'win32'
-    ? ['/d', '/s', '/c', 'gradlew.bat bootRun --console=plain --no-daemon']
-    : ['./gradlew', 'bootRun', '--console=plain', '--no-daemon'];
-  const child = spawn(command, argumentsForCommand, { cwd: BACKEND_DIRECTORY, env: environment, stdio: 'inherit', detached: process.platform !== 'win32' });
+  const child = spawn(process.execPath, [
+    '--env-file-if-exists=.env.local',
+    '--import', 'tsx',
+    '--watch', 'src/server.ts',
+  ], { cwd: BACKEND_DIRECTORY, env: environment, stdio: 'inherit', detached: process.platform !== 'win32' });
   child.once('error', (error) => console.error(`No se ha podido arrancar el backend: ${error.message}`));
   return child;
 }
@@ -201,16 +180,15 @@ async function seedDatabase(configuration) {
     try {
       await client.query('CREATE SCHEMA IF NOT EXISTS dev_support');
       await client.query('CREATE TABLE IF NOT EXISTS dev_support.seed_state (version text PRIMARY KEY, seeded_at timestamptz NOT NULL DEFAULT now())');
-      const seeded = await client.query('SELECT 1 FROM dev_support.seed_state WHERE version = $1', [SEED_VERSION]);
+      const seeded = await client.query('SELECT version FROM dev_support.seed_state ORDER BY seeded_at DESC LIMIT 1');
       if (seeded.rowCount > 0) {
         await client.query('COMMIT');
-        console.log('Datos de demostración ya presentes; se conservan los cambios locales.');
+        console.log(`Datos de demostración ya presentes (${seeded.rows[0].version}); se conservan los cambios locales.`);
         return;
       }
       await client.query("UPDATE estilos SET nombre = 'Shaolin del Norte' WHERE nombre = 'Shaolin'");
       await client.query("UPDATE estilos SET nombre = 'Wing Chun' WHERE nombre = 'Ving Tsun'");
-      await client.query("DELETE FROM estilos WHERE nombre = 'Jungar'");
-      await client.query("DELETE FROM grados WHERE nombre = 'Cinta Amarilla'");
+      await client.query("DELETE FROM estilos WHERE nombre = 'Jungar' AND NOT EXISTS (SELECT 1 FROM formas WHERE formas.id_estilo = estilos.id_estilo)");
 
       const styles = [
         ['Shaolin del Norte', 'Shaolin del Norte (Bei Shaolin): formas largas, piernas amplias y trabajo acrobático.'],
@@ -268,7 +246,12 @@ async function seedDatabase(configuration) {
       }
 
       const passwordHash = await bcrypt.hash('WushuDemo2026!', 12);
-      await client.query('INSERT INTO administradores (nombre, fecha_inicio, correo_electronico, password_hash) VALUES ($1, CURRENT_DATE, $2, $3)', ['Administración de demostración', 'admin@wushu.test', passwordHash]);
+      const existingAdmin = await client.query('SELECT 1 FROM administradores LIMIT 1');
+      if (existingAdmin.rowCount === 0) {
+        await client.query('INSERT INTO administradores (nombre, fecha_inicio, correo_electronico, password_hash) VALUES ($1, CURRENT_DATE, $2, $3)', ['Administración de demostración', 'admin@wushu.test', passwordHash]);
+      } else {
+        console.log('Cuenta ADMIN existente encontrada; se conservan sus credenciales.');
+      }
       const instructors = [
         ['Marta Serra', '2018-09-01', ['Shaolin del Norte'], 'marta.serra@wushu.test'], ['Daniel Rius', '2019-01-10', ['Hung Gar'], 'daniel.rius@wushu.test'],
         ['Laia Font', '2019-09-15', ['Taijiquan estilo Yang'], 'laia.font@wushu.test'], ['Jordi Casals', '2020-02-01', ['Wing Chun'], 'jordi.casals@wushu.test'],
@@ -375,12 +358,11 @@ async function stop() {
 
 async function main() {
   const configuration = getConfiguration();
-  const java = findJava(configuration);
   await assertPortFree(8000);
   await assertPortFree(8080);
   if (process.argv.includes('--reset')) await resetDevelopmentDatabase(configuration);
   await prepareDevelopmentDatabase(configuration);
-  backendProcess = startBackend(configuration, java);
+  backendProcess = startBackend(configuration);
   await waitForBackend(backendProcess);
   await seedDatabase(configuration);
   await startFrontend();

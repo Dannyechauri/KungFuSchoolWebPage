@@ -1,16 +1,5 @@
 import { NavLink, Outlet } from 'react-router'
 import { useAuth } from '../features/auth/useAuth'
-<<<<<<< Updated upstream
-
-const navigationItems = [
-  { to: '/', label: 'Inicio', icon: '館' },
-  { to: '/calendario', label: 'Calendario', icon: '日' },
-  { to: '/datos', label: 'Datos', icon: '録' },
-]
-
-export function AppLayout() {
-  const { user, logout } = useAuth()
-=======
 import { canManageSchoolData, hasOwnProfile } from '../features/auth/permissions'
 
 const navigationItems = {
@@ -28,7 +17,6 @@ export function AppLayout() {
     navigationItems.calendar,
     ...(canManageSchoolData(user?.role) ? [navigationItems.data] : []),
   ]
->>>>>>> Stashed changes
 
   return (
     <div className="grid min-h-screen md:grid-cols-[18.25rem_minmax(0,1fr)]">
@@ -42,7 +30,7 @@ export function AppLayout() {
         </div>
 
         <nav className="grid content-start gap-2" aria-label="Navegación principal">
-          {navigationItems.map((item) => (
+          {items.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
