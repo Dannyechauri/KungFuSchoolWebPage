@@ -45,7 +45,7 @@ function AuthenticatedApp() {
         <Route
           path="datos"
           element={
-            <ProtectedRoute required="ADMIN">
+            <ProtectedRoute required="data">
               <DataManagementPage />
             </ProtectedRoute>
           }

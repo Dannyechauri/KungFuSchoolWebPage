@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router'
 import { useAuth } from '../features/auth/useAuth'
-import { canManageSchoolData, hasOwnProfile } from '../features/auth/permissions'
+import { canViewSchoolData, hasOwnProfile } from '../features/auth/permissions'
 
 const navigationItems = {
   home: { to: '/', label: 'Inicio', icon: '館' },
@@ -15,7 +15,7 @@ export function AppLayout() {
     ...(user?.role === 'ADMIN' ? [navigationItems.home] : []),
     ...(hasOwnProfile(user?.role) ? [navigationItems.profile] : []),
     navigationItems.calendar,
-    ...(canManageSchoolData(user?.role) ? [navigationItems.data] : []),
+    ...(canViewSchoolData(user?.role) ? [navigationItems.data] : []),
   ]
 
   return (

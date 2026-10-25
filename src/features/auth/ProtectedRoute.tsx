@@ -1,10 +1,10 @@
 import { Navigate } from 'react-router'
 import { useAuth } from './useAuth'
 import type { WebRole } from './authContext'
-import { canManageCalendar, canManageSchoolData, hasOwnProfile } from './permissions'
+import { canManageCalendar, canManageSchoolData, canViewSchoolData, hasOwnProfile } from './permissions'
 
 type ProtectedRouteProps = {
-  required: WebRole | 'calendar' | 'profile'
+  required: WebRole | 'calendar' | 'profile' | 'data'
   children: React.ReactNode
 }
 
@@ -22,6 +22,8 @@ export function ProtectedRoute({ required, children }: ProtectedRouteProps) {
       ? canManageCalendar(user.role)
       : required === 'profile'
         ? hasOwnProfile(user.role)
+        : required === 'data'
+          ? canViewSchoolData(user.role)
         : required === 'ADMIN'
         ? canManageSchoolData(user.role)
         : user.role === required

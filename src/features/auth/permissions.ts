@@ -14,6 +14,10 @@ export function canManageCalendar(role: WebRole | null | undefined) {
 export function canManageSchoolData(role: WebRole | null | undefined) {
   return role === 'ADMIN'
 }
+/** Consulta de datos de gestión para administradores e instructores. */
+export function canViewSchoolData(role: WebRole | null | undefined) {
+  return role === 'ADMIN' || role === 'INSTRUCTOR'
+}
 
 /** Ficha propia (datos y formas): alumnos e instructores, que siempre tienen cuenta de alumno. */
 export function hasOwnProfile(role: WebRole | null | undefined) {

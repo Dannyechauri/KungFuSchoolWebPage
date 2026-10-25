@@ -39,11 +39,11 @@ describe('acceso de prealfa en la web', () => {
     vi.unstubAllGlobals()
   })
 
-  it('muestra al instructor solo la navegación de agenda, sin Inicio ni Datos', () => {
+  it('muestra Datos al instructor, pero no Inicio', () => {
     renderLayout('INSTRUCTOR')
 
     expect(screen.getByRole('link', { name: /calendario/i })).toBeTruthy()
-    expect(screen.queryByRole('link', { name: /datos/i })).toBeNull()
+    expect(screen.getByRole('link', { name: /datos/i })).toBeTruthy()
     expect(screen.queryByRole('link', { name: /inicio/i })).toBeNull()
   })
 
@@ -166,9 +166,11 @@ describe('acceso de prealfa en la web', () => {
     expect(screen.queryByRole('heading', { name: 'Gestionar agenda' })).toBeNull()
   })
 
-  it('redirige al instructor que intenta acceder a /datos', async () => {
+  it('permite al instructor acceder a la consulta de datos', async () => {
     mockedFetch.mockImplementation((url: string) => {
       if (url.endsWith('/api/auth/me')) return Promise.resolve(jsonResponse(sessionFor('INSTRUCTOR')))
+      if (url.endsWith('/api/database/tables')) return Promise.resolve(jsonResponse(['alumnos', 'cursos', 'formas', 'estilos', 'cursos_agendados', 'horarios_recurrentes']))
+      if (url.startsWith('/api/database/tables/')) return Promise.resolve(jsonResponse([]))
       if (url.endsWith('/api/calendar/rooms')) return Promise.resolve(jsonResponse([]))
       if (url.startsWith('/api/calendar/events')) return Promise.resolve(jsonResponse([]))
       throw new Error(`Ruta inesperada en prueba: ${url}`)
@@ -182,7 +184,7 @@ describe('acceso de prealfa en la web', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('heading', { name: /Agenda de clases y actividades/i })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Datos de la escuela' })).toBeTruthy()
   })
 
   it('redirige a /calendario cuando un usuario sin sesión accede a /calendario/gestionar', async () => {

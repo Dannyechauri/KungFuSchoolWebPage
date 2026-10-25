@@ -23,7 +23,6 @@ const tableLabels: Record<string, string> = {
   alumno_forma: 'Alumno · formas',
   alumno_grado: 'Alumno · grados',
   alumnos: 'Alumnos',
-  asistencias_curso: 'Asistencias',
   cursos: 'Cursos',
   cursos_agendados: 'Sesiones de cursos',
   estilos: 'Estilos',
@@ -42,7 +41,7 @@ const tableLabels: Record<string, string> = {
 const friendlyGroups = [
   { id: 'people', label: 'Personas', tables: ['alumnos', 'instructores', 'personas'] },
   { id: 'training', label: 'Formación', tables: ['formas', 'estilos', 'grados'] },
-  { id: 'schedule', label: 'Clases y espacios', tables: ['cursos', 'cursos_agendados', 'horarios_recurrentes', 'salas', 'asistencias_curso', 'inscripciones'] },
+  { id: 'schedule', label: 'Clases y espacios', tables: ['cursos', 'cursos_agendados', 'horarios_recurrentes', 'salas', 'inscripciones'] },
   { id: 'access', label: 'Accesos', tables: ['usuarios', 'administradores'] },
 ]
 
@@ -73,6 +72,7 @@ const friendlyFieldLabels: Record<string, string> = {
 }
 
 const friendlyAddLabels: Record<string, string> = {
+  administradores: 'Añadir administrador',
   alumnos: 'Añadir alumno',
   formas: 'Añadir forma',
   grados: 'Añadir grado',
@@ -172,10 +172,12 @@ function localDateValue() {
   return `${now.getFullYear()}-${month}-${day}`
 }
 
-function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
+function RelationshipDetails({ kind, recordId, gradeId, canManageFormStatus, canMarkLearning, onPendingDateChange }: {
   kind: RelationshipKind
   recordId: string
   gradeId?: string
+  canManageFormStatus: boolean
+  canMarkLearning: boolean
   onPendingDateChange?: (formId: string, date: string | null) => void
 }) {
   const [data, setData] = useState<Record<string, Row[]>>({})
@@ -187,6 +189,7 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
   const [selectedStyleId, setSelectedStyleId] = useState('')
   const [learnedOn, setLearnedOn] = useState(localDateValue)
   const [learnedDates, setLearnedDates] = useState<Record<string, string>>({})
+  const [progressDrafts, setProgressDrafts] = useState<Record<string, string>>({})
   const [newFormOptional, setNewFormOptional] = useState(false)
 
   const relatedTables = relatedTablesByKind[kind]
@@ -201,6 +204,8 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
     if (kind === 'student') {
       requests.push(apiRequest<Row[]>(`/api/database/students/${recordId}/known-forms`)
         .then((knownForms) => ['alumno_forma', knownForms] as const))
+      requests.push(apiRequest<Row[]>(`/api/database/students/${recordId}/learning-forms`)
+        .then((learningForms) => ['alumno_forma_progreso', learningForms] as const))
     }
     Promise.all(requests)
       .then((entries) => { if (active) { setData(Object.fromEntries(entries)); setError(null) } })
@@ -214,6 +219,8 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
   const formById = new Map(forms.map((form) => [String(form.id_forma), form]))
   const styleById = new Map(styles.map((style) => [String(style.id_estilo), style]))
   const studentForms = (data.alumno_forma ?? []).filter((row) => String(row.id_alumno) === recordId)
+  const learningForms = (data.alumno_forma_progreso ?? []).filter((row) => String(row.id_alumno) === recordId)
+  const learningFormsById = new Map(learningForms.map((row) => [String(row.id_forma), row]))
   const gradeForms = (data.grado_forma ?? []).filter((row) => {
     const ownerGradeId = kind === 'student' ? gradeId : recordId
     return ownerGradeId !== undefined && String(row.id_grado) === ownerGradeId
@@ -228,6 +235,10 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
     ...studentForms
       .filter((row) => !gradeForms.some((gradeForm) => String(gradeForm.id_forma) === String(row.id_forma)))
       .map((row) => ({ formId: String(row.id_forma), grade: null, known: row })),
+    ...learningForms
+      .filter((row) => !gradeForms.some((gradeForm) => String(gradeForm.id_forma) === String(row.id_forma))
+        && !studentForms.some((studentForm) => String(studentForm.id_forma) === String(row.id_forma)))
+      .map((row) => ({ formId: String(row.id_forma), grade: null, known: null })),
   ]
   const instructorStyles = (data.instructor_estilo ?? []).filter((row) => String(row.id_instructor) === recordId)
   const knownFormIds = new Set(studentForms.map((row) => String(row.id_forma)))
@@ -247,10 +258,11 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
       if (method === 'DELETE') await apiRequest(url, { method })
       else await apiRequest<Row>(url, { method, body: JSON.stringify(payload) })
       if (tableName === 'alumno_forma') {
-        const knownForms = await apiRequest<Row[]>(`/api/database/students/${recordId}/known-forms`)
-        setData((current) => {
-          return { ...current, alumno_forma: knownForms }
-        })
+        const [knownForms, learningForms] = await Promise.all([
+          apiRequest<Row[]>(`/api/database/students/${recordId}/known-forms`),
+          apiRequest<Row[]>(`/api/database/students/${recordId}/learning-forms`),
+        ])
+        setData((current) => ({ ...current, alumno_forma: knownForms, alumno_forma_progreso: learningForms }))
       } else {
         setIsLoading(true)
         setReloadVersion((version) => version + 1)
@@ -259,6 +271,23 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
     } catch (changeError) {
       setError(changeError instanceof Error ? changeError.message : 'No se pudo guardar la relación.')
       return false
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function saveLearningProgress(formId: string, percent: number) {
+    setIsSaving(true)
+    setError(null)
+    try {
+      await apiRequest(`/api/database/students/${encodeURIComponent(recordId)}/forms/${encodeURIComponent(formId)}/progress`, {
+        method: 'PUT',
+        body: JSON.stringify({ percent }),
+      })
+      const learningForms = await apiRequest<Row[]>(`/api/database/students/${recordId}/learning-forms`)
+      setData((current) => ({ ...current, alumno_forma_progreso: learningForms }))
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar el avance.')
     } finally {
       setIsSaving(false)
     }
@@ -294,6 +323,14 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
                 const originalLearnedOn = known ? String(known.fecha_aprendida ?? '') : ''
                 const learnedOnValue = known ? String(learnedDates[formId] ?? originalLearnedOn) : ''
                 const learnedOnLabel = learnedOnValue ? learnedOnValue.split('-').reverse().join('/') : ''
+                const learning = learningFormsById.get(formId)
+                const learningPercent = Number(learning?.porcentaje ?? 0)
+                const learningUpdatedOn = String(learning?.fecha_actualizacion ?? '')
+                const learningUpdatedOnLabel = learningUpdatedOn ? learningUpdatedOn.split('-').reverse().join('/') : ''
+                const isLearning = !isKnown && learning !== undefined
+                const progressDraft = progressDrafts[formId] ?? String(learningPercent)
+                const progressValue = Number(progressDraft)
+                const validProgress = /^\d+$/u.test(progressDraft) && progressValue >= 0 && progressValue <= 100
                 return (
                   <li key={formId} className="flex flex-wrap items-center justify-between gap-3 py-3">
                     <div className="min-w-0">
@@ -305,28 +342,36 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${isKnown ? 'bg-gold text-ink' : 'border border-line text-muted'}`}>
-                          {isKnown ? `Sabida${learnedOnLabel ? ` · ${learnedOnLabel}` : ''}` : 'Pendiente'}
+                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${isKnown ? 'bg-gold text-ink' : isLearning ? 'bg-emerald-100 text-emerald-900' : 'border border-line text-muted'}`}>
+                          {isKnown ? `Sabida${learnedOnLabel ? ` · ${learnedOnLabel}` : ''}` : isLearning ? `Aprendiendo · ${learningPercent}%` : 'Pendiente'}
                         </span>
-                        <button
-                          className="text-sm font-bold text-ink underline disabled:opacity-50"
-                          type="button"
-                          aria-label={`${isKnown ? 'Quitar como sabida' : 'Marcar como sabida'}: ${formName}`}
-                          disabled={isSaving}
-                          onClick={async () => {
-                            const saved = await changeRelation(
-                              'alumno_forma',
-                              isKnown ? 'DELETE' : 'POST',
-                              { id_alumno: recordId, id_forma: formId, fecha_aprendida: localDateValue() },
-                              isKnown ? `${recordId},${formId}` : undefined,
-                            )
-                            if (saved && isKnown) onPendingDateChange?.(formId, null)
-                          }}
-                        >
-                          {isKnown ? 'Quitar como sabida' : 'Marcar como sabida'}
-                        </button>
+                        {isLearning ? (
+                          <div className="flex items-center gap-2">
+                            <progress aria-label={`Avance de ${formName}`} className="h-2 w-24 accent-red" max={100} value={learningPercent} />
+                            <span className="text-xs text-muted">Actualizado {learningUpdatedOnLabel}</span>
+                          </div>
+                        ) : null}
+                        {canManageFormStatus ? (
+                          <button
+                            className="text-sm font-bold text-ink underline disabled:opacity-50"
+                            type="button"
+                            aria-label={`${isKnown ? 'Quitar como sabida' : 'Marcar como sabida'}: ${formName}`}
+                            disabled={isSaving}
+                            onClick={async () => {
+                              const saved = await changeRelation(
+                                'alumno_forma',
+                                isKnown ? 'DELETE' : 'POST',
+                                { id_alumno: recordId, id_forma: formId, fecha_aprendida: localDateValue() },
+                                isKnown ? `${recordId},${formId}` : undefined,
+                              )
+                              if (saved && isKnown) onPendingDateChange?.(formId, null)
+                            }}
+                          >
+                            {isKnown ? 'Quitar como sabida' : 'Marcar como sabida'}
+                          </button>
+                        ) : null}
                       </div>
-                      {isKnown ? (
+                      {canManageFormStatus && isKnown ? (
                         <>
                           <label className="sr-only" htmlFor={`learned-${formId}`}>Fecha aprendida de {formName}</label>
                           <input
@@ -343,6 +388,34 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
                             }}
                           />
                         </>
+                      ) : null}
+                      {canMarkLearning && grade && !isKnown ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="text-xs font-bold text-muted" htmlFor={`progress-${formId}`}>Avance (%)</label>
+                          <input
+                            id={`progress-${formId}`}
+                            aria-label={`Porcentaje de ${formName}`}
+                            className="h-9 w-20 rounded-soft border border-line bg-white px-2 text-sm text-ink"
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={progressDraft}
+                            disabled={isSaving}
+                            onChange={(event) => {
+                              const value = event.currentTarget.value
+                              setProgressDrafts((drafts) => ({ ...drafts, [formId]: value }))
+                            }}
+                          />
+                          <button
+                            className="text-sm font-bold text-red-dark underline disabled:opacity-50"
+                            type="button"
+                            disabled={isSaving || !validProgress}
+                            onClick={() => void saveLearningProgress(formId, progressValue)}
+                          >
+                            Guardar avance
+                          </button>
+                        </div>
                       ) : null}
                     </div>
                   </li>
@@ -416,6 +489,8 @@ function RelationshipDetails({ kind, recordId, gradeId, onPendingDateChange }: {
 export function DataManagementPage() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'ADMIN'
+  const isInstructor = user?.role === 'INSTRUCTOR'
+  const canViewData = isAdmin || isInstructor
   const [tables, setTables] = useState<string[]>([])
   const [table, setTable] = useState('')
   const [friendlyMode, setFriendlyMode] = useState(true)
@@ -438,7 +513,7 @@ export function DataManagementPage() {
 
   useEffect(() => {
     let active = true
-    if (!isAdmin) return () => { active = false }
+    if (!canViewData) return () => { active = false }
     apiRequest<string[]>('/api/database/tables')
       .then((loadedTables) => {
         if (!active) return
@@ -449,11 +524,11 @@ export function DataManagementPage() {
       .catch((loadError: unknown) => { if (active) setTableListError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar las tablas.') })
       .finally(() => { if (active) setIsTableListLoading(false) })
     return () => { active = false }
-  }, [isAdmin, tableListVersion])
+  }, [canViewData, isAdmin, tableListVersion])
 
   useEffect(() => {
     let active = true
-    if (!isAdmin || !table) return () => { active = false }
+    if (!canViewData || !table) return () => { active = false }
     Promise.all([
       apiRequest<Column[]>(`/api/database/tables/${encodeURIComponent(table)}/columns`),
       apiRequest<Row[]>(`/api/database/tables/${encodeURIComponent(table)}/rows?limit=500`),
@@ -467,13 +542,13 @@ export function DataManagementPage() {
       .catch((loadError: unknown) => { if (active) setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar el esquema y los registros.') })
       .finally(() => { if (active) setIsLoading(false) })
     return () => { active = false }
-  }, [isAdmin, reloadVersion, table])
+  }, [canViewData, reloadVersion, table])
 
   const foreignKeyTables = useMemo(() => [...new Set(columns.flatMap((column) => column.foreignKey ? [column.foreignKey.tableName] : []))], [columns])
   const referenceOptionsLoading = foreignKeyTables.length > 0 && referencedTables.owner !== table && !referenceError
   useEffect(() => {
     let active = true
-    if (!isAdmin || !table || !foreignKeyTables.length) return () => { active = false }
+    if (!canViewData || !table || !foreignKeyTables.length) return () => { active = false }
     Promise.all(foreignKeyTables.map(async (referencedTable) => {
       const [referencedColumns, referencedRows] = await Promise.all([
         apiRequest<Column[]>(`/api/database/tables/${encodeURIComponent(referencedTable)}/columns`),
@@ -489,12 +564,14 @@ export function DataManagementPage() {
       })
       .catch((loadError: unknown) => { if (active) setReferenceError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar las opciones relacionadas.') })
     return () => { active = false }
-  }, [foreignKeyTables, isAdmin, reloadVersion, table])
+  }, [canViewData, foreignKeyTables, reloadVersion, table])
 
   const references = referencedTables.owner === table ? referencedTables.values : {}
   const isAdministratorTable = table === 'administradores'
+  const canEditTable = isAdmin || (isInstructor && table === 'alumnos')
   const editableColumns = columns.filter((column) => !column.autoGenerated
     && (isCreating || !column.primaryKey)
+    && (isAdmin || !['password_hash', 'es_instructor', 'activo'].includes(column.name))
     && !(['cursos_agendados', 'horarios_recurrentes'].includes(table) && column.name === 'activo'))
   const visibleColumns = columns.filter((column) => column.name !== 'password_hash').slice(0, 6)
   const title = table ? tableLabel(table) : ''
@@ -583,13 +660,13 @@ export function DataManagementPage() {
     }
   }
 
-  if (user?.role !== 'ADMIN') return <section className="w-full text-muted">Esta sección requiere permisos de administración.</section>
+  if (!canViewData) return <section className="w-full text-muted">Esta sección requiere permisos de administración o instructor.</section>
 
   return (
     <section className="w-full">
       <p className="mb-2 text-xs font-black tracking-[0.12em] text-red uppercase">Administración</p>
       <h1 className="m-0 text-4xl font-bold tracking-tight text-ink md:text-5xl">Datos de la escuela</h1>
-      <p className="mt-4 max-w-3xl text-base leading-7 text-muted">Gestiona personas, formación y organización de las clases.</p>
+      <p className="mt-4 max-w-3xl text-base leading-7 text-muted">{isAdmin ? 'Gestiona personas, formación y organización de las clases.' : 'Consulta alumnos, cursos, formación y horarios. Puedes editar datos de alumnos y registrar su avance en las formas.'}</p>
       <label className="mt-5 inline-flex min-h-11 cursor-pointer items-center gap-3 text-sm font-bold text-ink">
         <input
           className="size-5 accent-red"
@@ -650,9 +727,9 @@ export function DataManagementPage() {
         <>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-4">
             <h2 className="m-0 text-2xl font-bold text-ink">{title}</h2>
-             {!isAdministratorTable ? <button className="min-h-10 rounded-full bg-red px-4 text-sm font-bold text-white disabled:opacity-50" type="button" onClick={() => { setEditingRow(null); setIsCreating(true); setPendingStudentFormDates({}); setError(null) }} disabled={isLoading || !columns.length}>{friendlyMode ? friendlyAddLabels[table] ?? `Añadir ${title.toLocaleLowerCase('es-ES')}` : '+ Añadir'}</button> : null}
+            {isAdmin ? <button className="min-h-10 rounded-full bg-red px-4 text-sm font-bold text-white disabled:opacity-50" type="button" onClick={() => { setEditingRow(null); setIsCreating(true); setPendingStudentFormDates({}); setError(null) }} disabled={isLoading || !columns.length}>{friendlyMode ? friendlyAddLabels[table] ?? `Añadir ${title.toLocaleLowerCase('es-ES')}` : '+ Añadir'}</button> : null}
           </div>
-          {isAdministratorTable ? <p className="mt-3 text-sm text-muted">Hay una única cuenta ADMIN, gestionada por el equipo de desarrollo mediante el procedimiento seguro de alta.</p> : null}
+          {isAdministratorTable ? <p className="mt-3 text-sm text-muted">Puedes crear varias cuentas ADMIN. Por seguridad, siempre debe quedar al menos una cuenta.</p> : null}
 
       {error ? <p className="mt-4 rounded-soft bg-red/10 p-3 text-sm font-bold text-red-dark">{error}</p> : null}
 
@@ -701,12 +778,14 @@ export function DataManagementPage() {
                     <button className="min-h-10 rounded-full border border-line bg-paper px-5 text-sm font-bold text-muted" type="button" onClick={() => { setEditingRow(null); setIsCreating(false); setPendingStudentFormDates({}) }} disabled={isSaving}>Cancelar</button>
                   </div>
                 </form>
-                {friendlyMode && editingRow && ['alumnos', 'grados', 'instructores'].includes(table) ? (
+                {friendlyMode && editingRow && (isAdmin ? ['alumnos', 'grados', 'instructores'].includes(table) : table === 'alumnos') ? (
                   <RelationshipDetails
                     key={`${table}:${rowId(editingRow, columns)}`}
                     kind={table === 'alumnos' ? 'student' : table === 'grados' ? 'grade' : 'instructor'}
                     recordId={String(editingRow[primaryKeyColumns(columns)[0]?.name ?? ''] ?? '')}
                     gradeId={table === 'alumnos' ? String(editingRow.id_grado ?? '') : undefined}
+                                      canManageFormStatus={isAdmin}
+                                      canMarkLearning={isInstructor}
                     onPendingDateChange={(formId, date) => setPendingStudentFormDates((current) => {
                       if (date === null) {
                         const next = { ...current }
@@ -735,7 +814,8 @@ export function DataManagementPage() {
                       ?? columns.find((column) => !column.primaryKey && !column.autoGenerated && column.name !== 'password_hash')
                     const details = columns.filter((column) => !column.primaryKey && !column.autoGenerated && column.name !== 'password_hash' && column.name !== titleColumn?.name).slice(0, 5)
                     const isCancelled = ['cursos_agendados', 'horarios_recurrentes'].includes(table) && row.activo === false
-                    const rowLabel = friendlyTitle(row, columns, references)
+                    const title = friendlyTitle(row, columns, references)
+                    const rowLabel = table === 'alumnos' && row.es_instructor === true ? `${title} (Instructor)` : title
                     return (
                       <PanelCard key={key} className="flex flex-col p-5">
                         <div className="flex items-start justify-between gap-3">
@@ -753,10 +833,10 @@ export function DataManagementPage() {
                           </dl>
                         ) : null}
                         <div className="mt-auto flex flex-wrap gap-4 pt-5">
-                          {table !== 'administradores' && hasPrimaryKey && !isCancelled
+                          {canEditTable && table !== 'administradores' && hasPrimaryKey && !isCancelled
                             ? <button className="text-sm font-bold text-ink underline" type="button" aria-label={`Editar ${rowLabel}`} onClick={() => { setEditingRow(row); setIsCreating(false); setPendingStudentFormDates({}); setError(null) }}>Editar</button>
                             : null}
-                          {hasPrimaryKey && !isAdministratorTable && !isCancelled
+                          {isAdmin && hasPrimaryKey && !isAdministratorTable && !isCancelled
                             ? <button className="text-sm font-bold text-red-dark underline" type="button" aria-label={`${removalLabel(table)} ${rowLabel}`} onClick={() => void deleteRow(row)}>{removalLabel(table)}</button>
                             : null}
                         </div>
@@ -779,10 +859,10 @@ export function DataManagementPage() {
                         <tr key={rowId(row, columns) || `${table}-${index}`} className="border-b border-line/70">
                           {visibleColumns.map((column) => <td key={column.name} className="max-w-56 truncate p-3 text-ink">{formatValue(row[column.name])}</td>)}
                           <td className="whitespace-nowrap p-3">
-                            {table !== 'administradores' && hasPrimaryKey && !(['cursos_agendados', 'horarios_recurrentes'].includes(table) && row.activo === false)
+                            {canEditTable && table !== 'administradores' && hasPrimaryKey && !(['cursos_agendados', 'horarios_recurrentes'].includes(table) && row.activo === false)
                               ? <button className="mr-3 font-bold text-red-dark" type="button" aria-label={`Editar ${rowLabel}`} onClick={() => { setEditingRow(row); setIsCreating(false); setPendingStudentFormDates({}); setError(null) }}>Editar</button>
                               : null}
-                            {hasPrimaryKey && !isAdministratorTable && !(['cursos_agendados', 'horarios_recurrentes'].includes(table) && row.activo === false)
+                            {isAdmin && hasPrimaryKey && !isAdministratorTable && !(['cursos_agendados', 'horarios_recurrentes'].includes(table) && row.activo === false)
                               ? <button className="font-bold text-red" type="button" aria-label={`${removalLabel(table)} ${rowLabel}`} onClick={() => void deleteRow(row)}>{removalLabel(table)}</button>
                               : ['cursos_agendados', 'horarios_recurrentes'].includes(table) && row.activo === false ? 'Cancelado' : 'Solo lectura'}
                           </td>
