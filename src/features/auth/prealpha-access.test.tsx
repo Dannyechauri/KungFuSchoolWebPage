@@ -43,6 +43,7 @@ describe('acceso de prealfa en la web', () => {
     renderLayout('INSTRUCTOR')
 
     expect(screen.getByRole('link', { name: /calendario/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /mi desempeño/i })).toBeTruthy()
     expect(screen.getByRole('link', { name: /datos/i })).toBeTruthy()
     expect(screen.queryByRole('link', { name: /inicio/i })).toBeNull()
   })
@@ -52,12 +53,14 @@ describe('acceso de prealfa en la web', () => {
 
     expect(screen.getByRole('link', { name: /inicio/i })).toBeTruthy()
     expect(screen.getByRole('link', { name: /datos/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /mi desempeño/i })).toBeTruthy()
     expect(screen.queryByRole('link', { name: /mi ficha/i })).toBeNull()
   })
 
   it('ofrece Mi ficha a alumnos e instructores', () => {
     renderLayout('USER')
     expect(screen.getByRole('link', { name: /mi ficha/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /mi desempeño/i })).toBeTruthy()
     cleanup()
 
     renderLayout('INSTRUCTOR')

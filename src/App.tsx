@@ -8,6 +8,7 @@ import { useAuth } from './features/auth/useAuth'
 import { AppLayout } from './layouts/AppLayout'
 import { DataManagementPage } from './pages/DataManagementPage'
 import { HomePage } from './pages/HomePage'
+import { PerformancePage } from './pages/PerformancePage'
 import { ProfilePage } from './pages/ProfilePage'
 
 function AuthenticatedApp() {
@@ -26,6 +27,7 @@ function AuthenticatedApp() {
       <Route element={<AppLayout />}>
       <Route index element={user.role === 'ADMIN' ? <HomePage /> : <Navigate to="/calendario" replace />} />
         <Route path="calendario" element={<CalendarPage />} />
+        <Route path="mi-desempeno" element={<PerformancePage />} />
         <Route
           path="calendario/gestionar"
           element={

@@ -5,6 +5,7 @@ import { canViewSchoolData, hasOwnProfile } from '../features/auth/permissions'
 const navigationItems = {
   home: { to: '/', label: 'Inicio', icon: '館' },
   calendar: { to: '/calendario', label: 'Calendario', icon: '日' },
+  performance: { to: '/mi-desempeno', label: 'Mi desempeño', icon: '功' },
   profile: { to: '/mi-ficha', label: 'Mi ficha', icon: '形' },
   data: { to: '/datos', label: 'Datos', icon: '録' },
 }
@@ -15,6 +16,7 @@ export function AppLayout() {
     ...(user?.role === 'ADMIN' ? [navigationItems.home] : []),
     ...(hasOwnProfile(user?.role) ? [navigationItems.profile] : []),
     navigationItems.calendar,
+    navigationItems.performance,
     ...(canViewSchoolData(user?.role) ? [navigationItems.data] : []),
   ]
 
