@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useOutletContext } from 'react-router'
 import { apiRequest } from '../api/client'
 import { PanelCard } from '../components/PanelCard'
 import { useAuth } from '../features/auth/useAuth'
@@ -13,6 +14,7 @@ type PerformanceRecord = {
   date: string
   approvedAt: string | null
   rejectedAt: string | null
+  resolvedByAdmin: boolean
   physicalWork: boolean
   cardioWork: boolean
   stretching: boolean
@@ -69,7 +71,9 @@ function formatMonth(value: string) {
   return new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(new Date(year!, month! - 1, 1))
 }
 
-function recordStatus(approvedAt: string | null, rejectedAt: string | null, confirmations: Confirmation[]) {
+function recordStatus(approvedAt: string | null, rejectedAt: string | null, confirmations: Confirmation[], resolvedByAdmin: boolean) {
+  if (resolvedByAdmin && rejectedAt) return 'Rechazado por el administrador'
+  if (resolvedByAdmin && approvedAt) return 'Aprobado por el administrador'
   if (rejectedAt) return 'Rechazado'
   if (approvedAt) return 'Aprobado · 2 confirmaciones'
   const confirmed = confirmations.filter(({ status }) => status === 'CONFIRMED').length
@@ -80,7 +84,10 @@ function recordStatus(approvedAt: string | null, rejectedAt: string | null, conf
 
 export function PerformancePage() {
   const { user } = useAuth()
+  const onPendingConfirmationsChange = useOutletContext<{ onPendingConfirmationsChange: (count: number) => void } | undefined>()?.onPendingConfirmationsChange
+  const isAdmin = user?.role === 'ADMIN'
   const canRegister = user?.role === 'USER' || user?.role === 'INSTRUCTOR'
+  const [expandedRankings, setExpandedRankings] = useState<RankingCategoryKey[]>([])
   const [records, setRecords] = useState<PerformanceRecord[]>([])
   const [rankings, setRankings] = useState<PerformanceRankings | null>(null)
   const [forms, setForms] = useState<FormOption[]>([])
@@ -111,7 +118,7 @@ export function PerformancePage() {
       apiRequest<PerformanceRankings>('/api/performance/rankings'),
       apiRequest<FormOption[]>('/api/performance/forms'),
       canRegister ? apiRequest<ConfirmerOption[]>('/api/performance/confirmers') : Promise.resolve([]),
-      canRegister ? apiRequest<ConfirmationRequest[]>('/api/performance/confirmations/pending') : Promise.resolve([]),
+      canRegister || isAdmin ? apiRequest<ConfirmationRequest[]>('/api/performance/confirmations/pending') : Promise.resolve([]),
     ])
       .then(([loadedRecords, loadedRankings, loadedForms, loadedConfirmers, loadedInbox]) => {
         if (!active) return
@@ -120,6 +127,7 @@ export function PerformancePage() {
         setForms(loadedForms)
         setConfirmers(loadedConfirmers)
         setInbox(loadedInbox)
+        if (canRegister) onPendingConfirmationsChange?.(loadedInbox.length)
         setError(null)
       })
       .catch((loadError: unknown) => {
@@ -127,7 +135,7 @@ export function PerformancePage() {
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [canRegister, reloadKey])
+  }, [canRegister, isAdmin, reloadKey, onPendingConfirmationsChange])
 
   function addConfirmer(person: ConfirmerOption) {
     if (selectedConfirmers.length >= 100 || selectedConfirmers.some(({ id }) => id === person.id)) return
@@ -189,7 +197,9 @@ export function PerformancePage() {
         method: 'POST',
         body: JSON.stringify({ decision }),
       })
-      setNotice(decision === 'CONFIRMED' ? 'Confirmación registrada.' : 'Has indicado que no puedes confirmar esta actividad.')
+      setNotice(isAdmin
+        ? decision === 'CONFIRMED' ? 'Aprobado por el administrador.' : 'Rechazado por el administrador.'
+        : decision === 'CONFIRMED' ? 'Confirmación registrada.' : 'Has indicado que no puedes confirmar esta actividad.')
       setReloadKey((key) => key + 1)
     } catch (responseError) {
       setError(responseError instanceof Error ? responseError.message : 'No se pudo responder a la solicitud.')
@@ -250,15 +260,15 @@ export function PerformancePage() {
               <h2 className="m-0 text-xl font-bold text-ink">Ranking mensual</h2>
               {rankings ? <p className="m-0 mt-1 text-sm capitalize text-muted">{formatMonth(rankings.month)}</p> : null}
             </div>
-            <span className="text-xs font-bold text-muted">Top 3 + tu puesto</span>
+            <span className="text-xs font-bold text-muted">{isAdmin ? 'Top 3' : 'Top 3 + tu puesto'}</span>
           </div>
           {loading && !rankings ? <p className="mt-4 text-sm text-muted">Calculando puntos…</p> : rankings ? (
             <div className="mt-3">
               {rankingCategories.map(({ key, label }) => (
                 <section key={key} className="border-t border-line py-3 first:border-t-0">
                   <h3 className="m-0 text-sm font-bold text-ink">{label}</h3>
-                  <ol className="mt-2 grid gap-1">
-                    {rankings[key].map((entry) => {
+                  <ol id={`ranking-${key}`} className="mt-2 grid gap-1">
+                    {(isAdmin && !expandedRankings.includes(key) ? rankings[key].slice(0, 3) : rankings[key]).map((entry) => {
                       const isCurrent = entry.studentId === user?.studentId
                       return (
                         <li key={entry.studentId} className={`grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 rounded-soft px-2 py-1.5 text-sm ${isCurrent ? 'bg-gold/30 font-bold text-ink' : 'text-muted'}`}>
@@ -269,6 +279,11 @@ export function PerformancePage() {
                       )
                     })}
                   </ol>
+                  {isAdmin && rankings[key].length > 3 ? (
+                    <button className="mt-2 min-h-10 text-sm font-bold text-red-dark" type="button" aria-expanded={expandedRankings.includes(key)} aria-controls={`ranking-${key}`} onClick={() => setExpandedRankings((current) => current.includes(key) ? current.filter((category) => category !== key) : [...current, key])}>
+                      {expandedRankings.includes(key) ? 'Ver menos' : `Ver todos (${rankings[key].length})`}
+                    </button>
+                  ) : null}
                 </section>
               ))}
             </div>
@@ -422,7 +437,7 @@ export function PerformancePage() {
         </PanelCard>
       ) : null}
 
-      {canRegister && inbox.length ? (
+      {(canRegister || isAdmin) && inbox.length ? (
         <section className="mt-9" aria-labelledby="confirmations-heading">
           <h2 className="m-0 text-xl font-bold text-ink" id="confirmations-heading">Por confirmar <span className="text-muted">({inbox.length})</span></h2>
           <div className="mt-4 grid gap-3">
@@ -439,7 +454,7 @@ export function PerformancePage() {
                 </div>
                 {request.forms.length ? <p className="mt-2 text-sm text-muted">Formas: {request.forms.join(', ')}</p> : null}
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <button className="min-h-10 rounded-soft bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" type="button" disabled={busyConfirmation === request.id} onClick={() => void respondToConfirmation(request.id, 'CONFIRMED')}>Confirmar</button>
+                  <button className="min-h-10 rounded-soft bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" type="button" disabled={busyConfirmation === request.id} onClick={() => void respondToConfirmation(request.id, 'CONFIRMED')}>{isAdmin ? 'Aprobar' : 'Confirmar'}</button>
                   <button className="min-h-10 rounded-soft border border-line px-4 text-sm font-bold text-ink disabled:opacity-50" type="button" disabled={busyConfirmation === request.id} onClick={() => void respondToConfirmation(request.id, 'REJECTED')}>Rechazar</button>
                 </div>
               </PanelCard>
@@ -463,7 +478,7 @@ export function PerformancePage() {
                   <h3 className="m-0 text-base font-bold text-ink">
                     {user?.role === 'ADMIN' || user?.role === 'INSTRUCTOR' ? `${record.studentName} · ` : ''}{formatDate(record.date)}
                   </h3>
-                  <span className="text-xs font-bold text-red-dark">{recordStatus(record.approvedAt, record.rejectedAt, record.confirmations)}</span>
+                  <span className="text-xs font-bold text-red-dark">{recordStatus(record.approvedAt, record.rejectedAt, record.confirmations, record.resolvedByAdmin)}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
                   {record.physicalWork ? <span>Trabajo físico</span> : null}

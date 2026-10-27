@@ -1,4 +1,6 @@
-import { NavLink, Outlet } from 'react-router'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router'
+import { apiRequest } from '../api/client'
 import { useAuth } from '../features/auth/useAuth'
 import { canViewSchoolData, hasOwnProfile } from '../features/auth/permissions'
 
@@ -12,6 +14,35 @@ const navigationItems = {
 
 export function AppLayout() {
   const { user, logout } = useAuth()
+  const location = useLocation()
+  const [pendingConfirmations, setPendingConfirmations] = useState(0)
+  const canConfirm = user?.role === 'USER' || user?.role === 'INSTRUCTOR'
+
+  useEffect(() => {
+    if (!canConfirm) return
+    const controller = new AbortController()
+    let latestRequest = 0
+    async function refreshPendingConfirmations() {
+      const requestId = ++latestRequest
+      try {
+        const pending = await apiRequest<{ id: number }[]>('/api/performance/confirmations/pending', { signal: controller.signal })
+        if (!controller.signal.aborted && requestId === latestRequest) setPendingConfirmations(pending.length)
+      } catch {
+        return
+      }
+    }
+    void refreshPendingConfirmations()
+    const interval = window.setInterval(() => void refreshPendingConfirmations(), 30_000)
+    const onFocus = () => { void refreshPendingConfirmations() }
+    window.addEventListener('focus', onFocus)
+    return () => {
+      controller.abort()
+      window.clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [canConfirm, user?.userId, location.key])
+
+  const hasPendingConfirmations = canConfirm && pendingConfirmations > 0
   const items = [
     ...(user?.role === 'ADMIN' ? [navigationItems.home] : []),
     ...(hasOwnProfile(user?.role) ? [navigationItems.profile] : []),
@@ -39,7 +70,9 @@ export function AppLayout() {
               end={item.to === '/'}
               className={({ isActive }) =>
                 `flex min-h-14 items-center gap-3 rounded-panel px-3.5 text-base font-bold transition-colors ${
-                  isActive ? 'bg-white/12 text-white' : 'text-cream-muted hover:bg-white/8 hover:text-white'
+                  item === navigationItems.performance && hasPendingConfirmations
+                    ? 'bg-gold text-ink hover:bg-gold/90'
+                    : isActive ? 'bg-white/12 text-white' : 'text-cream-muted hover:bg-white/8 hover:text-white'
                 }`
               }
             >
@@ -47,6 +80,11 @@ export function AppLayout() {
                 {item.icon}
               </span>
               {item.label}
+              {item === navigationItems.performance && hasPendingConfirmations ? (
+                <span className="ml-auto grid size-7 shrink-0 place-items-center rounded-full bg-red-dark text-xs font-bold text-white" aria-label={`${pendingConfirmations} ${pendingConfirmations === 1 ? 'actividad pendiente' : 'actividades pendientes'} de confirmar o rechazar`}>
+                  {pendingConfirmations > 99 ? '99+' : pendingConfirmations}
+                </span>
+              ) : null}
             </NavLink>
           ))}
         </nav>
@@ -65,7 +103,7 @@ export function AppLayout() {
       </aside>
 
       <main className="min-w-0 p-6 md:p-9">
-        <Outlet />
+        <Outlet context={{ onPendingConfirmationsChange: setPendingConfirmations }} />
       </main>
     </div>
   )
