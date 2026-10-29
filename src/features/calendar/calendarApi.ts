@@ -35,6 +35,7 @@ export type CalendarEvent = {
   curso_nombre: string
   curso_tema: string
   curso_descripcion: string | null
+  descripcion?: string | null
   tipo_curso: 'HABITUAL' | 'CURSO_ESPECIAL'
   instructor_nombre: string
   sala_nombre: string | null
@@ -85,6 +86,7 @@ export type EventPayload = ParticipationSettings & {
   roomId: number
   startAt: string
   endAt: string
+  description?: string | null
 }
 
 export type RecurringPayload = ParticipationSettings & {

@@ -46,6 +46,7 @@ describe('ScheduleForm', () => {
 
     expect(screen.getByLabelText('Fecha de la sesión')).toBeTruthy()
     expect(screen.queryByLabelText('Fecha de fin')).toBeNull()
+    await user.type(screen.getByLabelText('Descripción del evento'), 'Traer protecciones.')
     await user.clear(screen.getByLabelText('Hora de inicio'))
     await user.type(screen.getByLabelText('Hora de inicio'), '10:00')
     await user.clear(screen.getByLabelText('Hora de fin'))
@@ -58,6 +59,7 @@ describe('ScheduleForm', () => {
       roomId: 3,
       startAt: '2026-10-24T10:00:00',
       endAt: '2026-10-24T13:00:00',
+      description: 'Traer protecciones.',
     })
     expect(screen.queryByLabelText('Límite de plazas de alumno')).toBeNull()
   })

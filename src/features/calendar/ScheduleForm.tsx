@@ -133,7 +133,8 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
       setValidationError('El final debe ser posterior al inicio.')
       return
     }
-    onSubmitEvent(currentEvent?.id_curso_agendado ?? null, { courseId, instructorId, roomId, startAt, endAt, ...settings })
+    const description = String(data.get('description') ?? '').trim() || null
+    onSubmitEvent(currentEvent?.id_curso_agendado ?? null, { courseId, instructorId, roomId, startAt, endAt, description, ...settings })
   }
 
   return (
@@ -212,6 +213,10 @@ export function ScheduleForm({ target, courses, instructors, rooms, saving, erro
             <label className={labelClass}>
               Hora de fin
               <input className={inputClass} name="endTime" type="time" defaultValue={currentEvent?.fecha_hora_fin.slice(11, 16) ?? defaultEndTime(target.kind === 'event-create' ? target.startTime : undefined)} required />
+            </label>
+            <label className={`${labelClass} sm:col-span-2 xl:col-span-3`}>
+              Descripción del evento
+              <textarea className={`${inputClass} min-h-24 py-3`} name="description" defaultValue={currentEvent?.descripcion ?? ''} maxLength={2000} />
             </label>
           </>
         )}

@@ -598,6 +598,7 @@ export function CalendarPage() {
                 {shownNotice ? <p className="m-0 rounded-soft bg-green-100 p-3 text-sm font-bold text-green-800" role="status">{shownNotice}</p> : null}
                 <p className="m-0 text-base font-bold text-red-dark">{eventTimeRange(shownEvent)}</p>
                 <p className="m-0 text-muted">{shownEvent.curso_tema}</p>
+                {shownEvent.descripcion ? <p className="m-0 whitespace-pre-wrap leading-6 text-ink">{shownEvent.descripcion}</p> : null}
                 {shownEvent.curso_descripcion ? <p className="m-0 leading-6 text-muted">{shownEvent.curso_descripcion}</p> : null}
                 <dl className="grid gap-3 rounded-soft border border-line bg-white/60 p-4 sm:grid-cols-2">
                   <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Instructor</dt><dd className="mt-1 font-semibold text-ink">{shownEvent.instructor_nombre}</dd></div>
