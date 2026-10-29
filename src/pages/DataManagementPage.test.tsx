@@ -21,11 +21,37 @@ function jsonResponse(body: unknown, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => body }
 }
 
-function installApi(tables: string[], columns: Record<string, Column[]>, rows: Record<string, Row[]>, hiddenRows: Record<string, Row[]> = {}) {
+function installApi(
+  tables: string[],
+  columns: Record<string, Column[]>,
+  rows: Record<string, Row[]>,
+  hiddenRows: Record<string, Row[]> = {},
+  author = 'Administración',
+  authorRole: 'ADMIN' | 'INSTRUCTOR' = 'ADMIN',
+) {
   const writes: Write[] = []
+  const commentsByStudent: Record<string, Row[]> = {}
   fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
     const url = String(input)
     if (url.endsWith('/api/database/tables')) return jsonResponse(tables)
+    const commentsMatch = /\/api\/database\/students\/(\d+)\/comments(?:\/(\d+))?$/u.exec(url)
+    if (commentsMatch) {
+      const studentId = commentsMatch[1]!
+      const commentId = commentsMatch[2]
+      if (init?.method === 'DELETE' && commentId) {
+        commentsByStudent[studentId] = (commentsByStudent[studentId] ?? []).filter((entry) => String(entry.id) !== commentId)
+        writes.push({ table: 'alumno_comentarios', method: 'DELETE', payload: {}, id: commentId })
+        return jsonResponse({ deleted: true })
+      }
+      if (init?.method === 'POST') {
+        const payload = JSON.parse(String(init.body)) as Row
+        const saved = { id: commentsByStudent[studentId]?.length ? 2 : 1, authorId: 1, author, role: authorRole, comment: payload.comment, createdAt: '2025-03-05T10:00:00.000Z' }
+        commentsByStudent[studentId] = [saved, ...(commentsByStudent[studentId] ?? [])]
+        writes.push({ table: 'alumno_comentarios', method: 'POST', payload })
+        return jsonResponse(saved, 201)
+      }
+      return jsonResponse(commentsByStudent[studentId] ?? [])
+    }
     const knownFormsMatch = /\/api\/database\/students\/(\d+)\/known-forms$/u.exec(url)
     if (knownFormsMatch) {
       const knownForms = (rows.alumno_forma ?? [])
@@ -294,7 +320,7 @@ describe('gestión amigable de datos', () => {
     }))
   })
 
-  it('permite al instructor consultar datos y guardar el avance de una forma del alumno', async () => {
+  it('permite al instructor consultar la ficha, guardar avances y añadir comentarios sin editar datos', async () => {
     const writes = installApi(
       ['alumnos', 'cursos', 'formas', 'estilos', 'cursos_agendados', 'horarios_recurrentes'],
       {
@@ -316,16 +342,23 @@ describe('gestión amigable de datos', () => {
         estilos: [{ id_estilo: 9, nombre: 'Shaolin' }],
         grado_forma: [{ id_grado: 4, id_forma: 11, es_opcional: false }],
       },
+      {},
+      'Instructor test',
+      'INSTRUCTOR',
     )
     const user = userEvent.setup()
     renderAdminPage('INSTRUCTOR')
 
     expect(await screen.findByRole('heading', { name: 'Datos de la escuela' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Añadir alumno' })).toBeNull()
-    await user.click(await screen.findByRole('button', { name: 'Editar Ana Sol' }))
+    expect(await screen.findByRole('button', { name: 'Ver ficha Ana Sol' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Editar Ana Sol' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Ver ficha Ana Sol' }))
+    expect(await screen.findByRole('heading', { name: 'Ficha del alumno' })).toBeTruthy()
     expect(await screen.findByRole('heading', { name: 'Formación del alumno' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Marcar como sabida: Forma Pendiente' })).toBeNull()
     expect(screen.queryByLabelText('Activo')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Guardar' })).toBeNull()
 
     await user.clear(screen.getByLabelText('Porcentaje de Forma Pendiente'))
     await user.type(screen.getByLabelText('Porcentaje de Forma Pendiente'), '75')
@@ -335,6 +368,18 @@ describe('gestión amigable de datos', () => {
       table: 'alumno_forma_progreso', method: 'PUT', payload: expect.objectContaining({ id_alumno: '7', id_forma: '11', porcentaje: 75 }),
     }))
     expect(await screen.findByText('Aprendiendo · 75%')).toBeTruthy()
+
+    await user.type(screen.getByLabelText('Añadir comentario'), 'Revisar postura la próxima semana.')
+    await user.click(screen.getByRole('button', { name: 'Añadir comentario' }))
+    expect(writes).toContainEqual(expect.objectContaining({
+      table: 'alumno_comentarios', method: 'POST', payload: { comment: 'Revisar postura la próxima semana.' },
+    }))
+    expect(await screen.findByText('Revisar postura la próxima semana.')).toBeTruthy()
+    expect(screen.getByText('Instructor test')).toBeTruthy()
+    expect(document.querySelector('time[datetime="2025-03-05T10:00:00.000Z"]')?.textContent).not.toBe('')
+    await user.click(screen.getByRole('button', { name: 'Borrar comentario de Instructor test' }))
+    expect(writes).toContainEqual(expect.objectContaining({ table: 'alumno_comentarios', method: 'DELETE', id: '1' }))
+    await waitFor(() => expect(screen.queryByText('Revisar postura la próxima semana.')).toBeNull())
   })
 
   it('permite configurar formas obligatorias y opcionales dentro de un grado', async () => {

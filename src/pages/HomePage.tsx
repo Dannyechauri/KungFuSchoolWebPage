@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { apiRequest } from '../api/client'
+import { BirthdayPanel } from '../components/BirthdayPanel'
 import { PanelCard } from '../components/PanelCard'
 import { formatActivityDate } from '../data/demoActivities'
 
@@ -92,17 +93,20 @@ export function HomePage() {
           </ul>
         </PanelCard>
 
-        <PanelCard className="flex flex-col justify-between p-6">
-          <div>
-            <p className="m-0 text-xs font-black tracking-[0.12em] text-red uppercase">Siguiente clase</p>
-            <h2 className="mt-3 text-2xl font-bold leading-tight text-ink">{nextActivity?.title}</h2>
-            <p className="mt-3 text-base leading-7 text-muted">{nextActivity?.instructor} dirige la próxima sesión del calendario.</p>
-          </div>
-          <div className="mt-8 border-t border-line pt-4">
-            <time className="block text-lg font-bold text-red-dark">{nextActivity ? formatActivityDate(nextActivity.date) : 'Sin actividades'}</time>
-            <span className="mt-1 block text-sm text-muted">{nextActivity?.topic}</span>
-          </div>
-        </PanelCard>
+        <div className="grid content-start gap-5">
+          <PanelCard className="flex flex-col justify-between p-6">
+            <div>
+              <p className="m-0 text-xs font-black tracking-[0.12em] text-red uppercase">Siguiente clase</p>
+              <h2 className="mt-3 text-2xl font-bold leading-tight text-ink">{nextActivity?.title}</h2>
+              <p className="mt-3 text-base leading-7 text-muted">{nextActivity?.instructor} dirige la próxima sesión del calendario.</p>
+            </div>
+            <div className="mt-8 border-t border-line pt-4">
+              <time className="block text-lg font-bold text-red-dark">{nextActivity ? formatActivityDate(nextActivity.date) : 'Sin actividades'}</time>
+              <span className="mt-1 block text-sm text-muted">{nextActivity?.topic}</span>
+            </div>
+          </PanelCard>
+          <BirthdayPanel />
+        </div>
       </div></>}
     </section>
   )

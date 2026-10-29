@@ -28,6 +28,9 @@ function profile(learning: { percent: number; updatedOn: string } | null) {
 function mockApi() {
   let learning: { percent: number; updatedOn: string } | null = null
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/api/me/birthdays/today')) {
+      return new Response(JSON.stringify([{ id: 2, name: 'Ana Sol' }]), { status: 200 })
+    }
     if (url.endsWith('/api/me/forms/11/progress')) {
       if (init?.method === 'DELETE') learning = null
       else learning = { percent: JSON.parse(String(init?.body)).percent, updatedOn: '2026-02-01' }
@@ -50,6 +53,7 @@ describe('ProfilePage', () => {
     expect(screen.queryByRole('heading', { name: 'Opcionales' })).toBeNull()
     expect(screen.getAllByText('Wu Bu Quan')).toHaveLength(1)
     expect(screen.getByText('Forma anterior')).toBeTruthy()
+    expect(await screen.findByText('Ana Sol')).toBeTruthy()
     expect(screen.getByText('Ving Tsun')).toBeTruthy()
     expect(screen.getByText('Opcional')).toBeTruthy()
     expect(screen.getByText('1 de 2 obligatorias')).toBeTruthy()

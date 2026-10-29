@@ -17,6 +17,9 @@ type Column = {
 }
 type Row = Record<string, unknown>
 type ReferencedTable = { columns: Column[]; rows: Row[] }
+type StudentComment = { id: number; authorId: number; author: string; role: 'ADMIN' | 'INSTRUCTOR'; comment: string; createdAt: string }
+
+const studentCommentDateFormatter = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
 
 const tableLabels: Record<string, string> = {
   administradores: 'Administradores',
@@ -170,6 +173,104 @@ function localDateValue() {
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
   return `${now.getFullYear()}-${month}-${day}`
+}
+
+function StudentComments({ studentId, viewerId, viewerRole, isAdmin }: {
+  studentId: string
+  viewerId: number
+  viewerRole: 'ADMIN' | 'INSTRUCTOR' | 'USER'
+  isAdmin: boolean
+}) {
+  const [comments, setComments] = useState<StudentComment[]>([])
+  const [comment, setComment] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    apiRequest<StudentComment[]>(`/api/database/students/${encodeURIComponent(studentId)}/comments`)
+      .then((loaded) => { if (active) { setComments(loaded); setError(null) } })
+      .catch((loadError: unknown) => { if (active) setError(loadError instanceof Error ? loadError.message : 'No se pudieron cargar los comentarios.') })
+      .finally(() => { if (active) setIsLoading(false) })
+    return () => { active = false }
+  }, [studentId])
+
+  async function addComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const text = comment.trim()
+    if (!text) return
+    setIsSaving(true)
+    setError(null)
+    try {
+      const saved = await apiRequest<StudentComment>(`/api/database/students/${encodeURIComponent(studentId)}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ comment: text }),
+      })
+      setComments((current) => [saved, ...current])
+      setComment('')
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar el comentario.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  async function deleteComment(commentId: number) {
+    setDeletingId(commentId)
+    setError(null)
+    try {
+      await apiRequest(`/api/database/students/${encodeURIComponent(studentId)}/comments/${commentId}`, { method: 'DELETE' })
+      setComments((current) => current.filter((entry) => entry.id !== commentId))
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'No se pudo borrar el comentario.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  return (
+    <section className="mt-7 border-t border-line pt-5" aria-label="Comentarios del alumno">
+      <h4 className="m-0 text-lg font-bold text-ink">Comentarios</h4>
+      <form className="mt-4 grid gap-3" onSubmit={(event) => void addComment(event)}>
+        <label className="grid gap-2 text-sm font-bold text-muted" htmlFor={`student-comment-${studentId}`}>Añadir comentario
+          <textarea
+            id={`student-comment-${studentId}`}
+            className="min-h-24 rounded-soft border border-line bg-white p-3 text-sm font-normal text-ink"
+            value={comment}
+            maxLength={4000}
+            required
+            onChange={(event) => setComment(event.currentTarget.value)}
+          />
+        </label>
+        <button className="min-h-10 w-fit rounded-full bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" type="submit" disabled={isSaving || !comment.trim()}>
+          {isSaving ? 'Guardando…' : 'Añadir comentario'}
+        </button>
+      </form>
+      {error ? <p className="mt-3 text-sm font-bold text-red-dark" role="alert">{error}</p> : null}
+      {isLoading ? <p className="mt-4 text-sm text-muted">Cargando comentarios…</p> : comments.length ? (
+        <ul className="mt-4 grid divide-y divide-line">
+          {comments.map((entry) => (
+            <li key={entry.id} className="py-4 first:pt-0">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <strong className="text-sm text-ink">{entry.author}</strong>
+                <div className="flex items-center gap-3">
+                  <time className="text-xs text-muted" dateTime={entry.createdAt}>{studentCommentDateFormatter.format(new Date(entry.createdAt))}</time>
+                  {isAdmin || (entry.role === viewerRole && entry.authorId === viewerId) ? (
+                    <button className="text-xs font-bold text-red-dark underline disabled:opacity-50" type="button" aria-label={`Borrar comentario de ${entry.author}`} disabled={deletingId !== null} onClick={() => void deleteComment(entry.id)}>
+                      {deletingId === entry.id ? 'Borrando…' : 'Borrar'}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <p className="mb-0 mt-2 whitespace-pre-wrap text-sm leading-6 text-ink">{entry.comment}</p>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="mb-0 mt-4 text-sm text-muted">Todavía no hay comentarios.</p>}
+    </section>
+  )
 }
 
 function RelationshipDetails({ kind, recordId, gradeId, canManageFormStatus, canMarkLearning, onPendingDateChange }: {
@@ -568,7 +669,7 @@ export function DataManagementPage() {
 
   const references = referencedTables.owner === table ? referencedTables.values : {}
   const isAdministratorTable = table === 'administradores'
-  const canEditTable = isAdmin || (isInstructor && table === 'alumnos')
+  const canEditTable = isAdmin
   const editableColumns = columns.filter((column) => !column.autoGenerated
     && (isCreating || !column.primaryKey)
     && (isAdmin || !['password_hash', 'es_instructor', 'activo'].includes(column.name))
@@ -666,7 +767,7 @@ export function DataManagementPage() {
     <section className="w-full">
       <p className="mb-2 text-xs font-black tracking-[0.12em] text-red uppercase">Administración</p>
       <h1 className="m-0 text-4xl font-bold tracking-tight text-ink md:text-5xl">Datos de la escuela</h1>
-      <p className="mt-4 max-w-3xl text-base leading-7 text-muted">{isAdmin ? 'Gestiona personas, formación y organización de las clases.' : 'Consulta alumnos, cursos, formación y horarios. Puedes editar datos de alumnos y registrar su avance en las formas.'}</p>
+      <p className="mt-4 max-w-3xl text-base leading-7 text-muted">{isAdmin ? 'Gestiona personas, formación y organización de las clases.' : 'Consulta alumnos, cursos, formación y horarios; registra avances y comentarios en las fichas.'}</p>
       <label className="mt-5 inline-flex min-h-11 cursor-pointer items-center gap-3 text-sm font-bold text-ink">
         <input
           className="size-5 accent-red"
@@ -738,9 +839,19 @@ export function DataManagementPage() {
               <PanelCard className="mt-5 p-6"><p className="m-0 text-sm text-muted">Cargando opciones relacionadas…</p></PanelCard>
             ) : (
               <PanelCard className="mt-5 p-6">
-                <h3 className="m-0 text-xl font-bold text-ink">{editingRow ? 'Editar registro' : 'Nuevo registro'}</h3>
+                <h3 className="m-0 text-xl font-bold text-ink">{editingRow && isInstructor && table === 'alumnos' ? 'Ficha del alumno' : editingRow ? 'Editar registro' : 'Nuevo registro'}</h3>
                 {table === 'administradores' && editingRow ? <p className="mt-2 text-sm text-muted">Los administradores no se pueden editar desde esta herramienta; crea o elimina registros según necesites.</p> : null}
                 {referenceError ? <p className="mt-2 text-sm text-red-dark">No se han podido cargar las opciones de las relaciones; los campos relacionados quedan desactivados.</p> : null}
+                {isInstructor && table === 'alumnos' && editingRow ? (
+                  <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+                    {columns.filter((column) => column.name !== 'password_hash' && !column.autoGenerated).map((column) => (
+                      <div key={column.name}>
+                        <dt className="text-xs font-black tracking-[0.08em] text-muted uppercase">{fieldLabel(column)}</dt>
+                        <dd className="m-0 mt-1 break-words text-sm font-bold text-ink">{friendlyValue(editingRow, column, references)}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
                 <form className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3" onSubmit={saveRow} key={editingRow ? rowId(editingRow, columns) : 'new-row'}>
                   {editableColumns.map((column) => {
                     const currentValue = editingRow?.[column.name]
@@ -778,6 +889,7 @@ export function DataManagementPage() {
                     <button className="min-h-10 rounded-full border border-line bg-paper px-5 text-sm font-bold text-muted" type="button" onClick={() => { setEditingRow(null); setIsCreating(false); setPendingStudentFormDates({}) }} disabled={isSaving}>Cancelar</button>
                   </div>
                 </form>
+                )}
                 {friendlyMode && editingRow && (isAdmin ? ['alumnos', 'grados', 'instructores'].includes(table) : table === 'alumnos') ? (
                   <RelationshipDetails
                     key={`${table}:${rowId(editingRow, columns)}`}
@@ -796,6 +908,7 @@ export function DataManagementPage() {
                     })}
                   />
                 ) : null}
+                {editingRow && table === 'alumnos' ? <StudentComments studentId={String(editingRow.id_alumno)} viewerId={user?.userId ?? 0} viewerRole={user?.role ?? 'USER'} isAdmin={isAdmin} /> : null}
               </PanelCard>
             )
           ) : null}
@@ -833,6 +946,9 @@ export function DataManagementPage() {
                           </dl>
                         ) : null}
                         <div className="mt-auto flex flex-wrap gap-4 pt-5">
+                          {isInstructor && table === 'alumnos' && hasPrimaryKey
+                            ? <button className="text-sm font-bold text-ink underline" type="button" aria-label={`Ver ficha ${rowLabel}`} onClick={() => { setEditingRow(row); setIsCreating(false); setPendingStudentFormDates({}); setError(null) }}>Ver ficha</button>
+                            : null}
                           {canEditTable && table !== 'administradores' && hasPrimaryKey && !isCancelled
                             ? <button className="text-sm font-bold text-ink underline" type="button" aria-label={`Editar ${rowLabel}`} onClick={() => { setEditingRow(row); setIsCreating(false); setPendingStudentFormDates({}); setError(null) }}>Editar</button>
                             : null}
@@ -859,6 +975,9 @@ export function DataManagementPage() {
                         <tr key={rowId(row, columns) || `${table}-${index}`} className="border-b border-line/70">
                           {visibleColumns.map((column) => <td key={column.name} className="max-w-56 truncate p-3 text-ink">{formatValue(row[column.name])}</td>)}
                           <td className="whitespace-nowrap p-3">
+                            {isInstructor && table === 'alumnos' && hasPrimaryKey
+                              ? <button className="mr-3 font-bold text-ink" type="button" aria-label={`Ver ficha ${rowLabel}`} onClick={() => { setEditingRow(row); setIsCreating(false); setPendingStudentFormDates({}); setError(null) }}>Ver ficha</button>
+                              : null}
                             {canEditTable && table !== 'administradores' && hasPrimaryKey && !(['cursos_agendados', 'horarios_recurrentes'].includes(table) && row.activo === false)
                               ? <button className="mr-3 font-bold text-red-dark" type="button" aria-label={`Editar ${rowLabel}`} onClick={() => { setEditingRow(row); setIsCreating(false); setPendingStudentFormDates({}); setError(null) }}>Editar</button>
                               : null}

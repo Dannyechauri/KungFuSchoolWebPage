@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { apiRequest } from '../api/client'
+import { BirthdayPanel } from '../components/BirthdayPanel'
 import { PanelCard } from '../components/PanelCard'
 
 type Profile = {
@@ -213,15 +214,18 @@ export function ProfilePage() {
           </dl>
         </PanelCard>
 
-        <PanelCard className="p-6">
-          <p className="m-0 text-xs font-black tracking-[0.12em] text-red uppercase">Grado actual</p>
-          <h2 className="mt-3 text-2xl font-bold leading-tight text-ink">{grade.name}</h2>
-          <p className="mt-2 text-base text-muted">Cinturón {grade.beltColor.toLowerCase()}</p>
-          <div className="mt-6 border-t border-line pt-4">
-            <strong className="block text-4xl leading-none text-ink">{profile.knownForms.length}</strong>
-            <span className="mt-2 block text-sm text-muted">{profile.knownForms.length === 1 ? 'forma aprendida' : 'formas aprendidas'}</span>
-          </div>
-        </PanelCard>
+        <div className="grid content-start gap-5">
+          <PanelCard className="p-6">
+            <p className="m-0 text-xs font-black tracking-[0.12em] text-red uppercase">Grado actual</p>
+            <h2 className="mt-3 text-2xl font-bold leading-tight text-ink">{grade.name}</h2>
+            <p className="mt-2 text-base text-muted">Cinturón {grade.beltColor.toLowerCase()}</p>
+            <div className="mt-6 border-t border-line pt-4">
+              <strong className="block text-4xl leading-none text-ink">{profile.knownForms.length}</strong>
+              <span className="mt-2 block text-sm text-muted">{profile.knownForms.length === 1 ? 'forma aprendida' : 'formas aprendidas'}</span>
+            </div>
+          </PanelCard>
+          <BirthdayPanel />
+        </div>
       </div>
 
       {instructor ? (
