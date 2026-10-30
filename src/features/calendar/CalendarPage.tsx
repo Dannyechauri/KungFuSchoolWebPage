@@ -62,6 +62,10 @@ function courseColor(courseId: CalendarEvent['id_curso']) {
   return courseColors[(hash >>> 0) % courseColors.length]!
 }
 
+function isCurrentInstructor(event: CalendarEvent, instructorId: number | null | undefined) {
+  return instructorId !== null && instructorId !== undefined && entityKey(event.id_instructor) === entityKey(instructorId)
+}
+
 function eventTimeRange(event: CalendarEvent) {
   const startDate = event.fecha_hora.slice(0, 10)
   const endDate = event.fecha_hora_fin.slice(0, 10)
@@ -126,9 +130,10 @@ function tooltipPosition(button: HTMLButtonElement) {
   return { left, top }
 }
 
-function CalendarEventCard({ event, onSelect, compact = false, showTooltip = false }: { event: CalendarEvent; onSelect: () => void; compact?: boolean; showTooltip?: boolean }) {
+function CalendarEventCard({ event, instructorId, onSelect, compact = false, showTooltip = false }: { event: CalendarEvent; instructorId?: number | null; onSelect: () => void; compact?: boolean; showTooltip?: boolean }) {
   const [tooltip, setTooltip] = useState<{ left: number; top: number } | null>(null)
   const color = courseColor(event.id_curso)
+  const assignedToCurrentInstructor = isCurrentInstructor(event, instructorId)
   const duration = minutesOfDateTime(event.fecha_hora_fin) - minutesOfDateTime(event.fecha_hora)
   const compactLabel = compact && duration < 55
   const updateTooltip = (button: HTMLButtonElement) => {
@@ -143,7 +148,7 @@ function CalendarEventCard({ event, onSelect, compact = false, showTooltip = fal
   return (
     <>
       <button
-        className={`w-full rounded-soft border text-left ${compact ? 'h-full min-h-0 overflow-hidden' : ''} ${compactLabel ? duration < 22 ? 'px-1 py-0' : 'p-1.5' : compact ? 'p-2' : 'p-3'} ${color.border} ${color.surface} ${color.text} ${event.activo ? 'hover:brightness-95' : 'opacity-70'}`}
+        className={`w-full rounded-soft border text-left ${compact ? 'h-full min-h-0 overflow-hidden' : ''} ${compactLabel ? duration < 22 ? 'px-1 py-0' : 'p-1.5' : compact ? 'p-2' : 'p-3'} ${color.border} ${color.surface} ${color.text} ${assignedToCurrentInstructor ? 'ring-2 ring-ink ring-offset-1' : ''} ${event.activo ? 'hover:brightness-95' : 'opacity-70'}`}
         type="button"
         onClick={openEvent}
         onMouseEnter={(mouseEvent) => { if (showTooltip) updateTooltip(mouseEvent.currentTarget) }}
@@ -194,9 +199,10 @@ function CalendarEventCard({ event, onSelect, compact = false, showTooltip = fal
   )
 }
 
-function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent, onCreateEvent }: {
+function WeekSchedule({ events, weekKeys, instructorId, onSelectDay, onSelectEvent, onCreateEvent }: {
   events: CalendarEvent[]
   weekKeys: string[]
+  instructorId?: number | null
   onSelectDay: (day: string) => void
   onSelectEvent: (event: CalendarEvent) => void
   onCreateEvent?: (day: string, time: string) => void
@@ -226,7 +232,7 @@ function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent, onCreateEv
                 </button>
                 {spanningEvents.filter((event) => event.fecha_hora.slice(0, 10) === day).map((event) => (
                   <div key={entityKey(event.id_curso_agendado)} className="px-1 pb-2">
-                    <CalendarEventCard event={event} onSelect={() => onSelectEvent(event)} compact />
+                    <CalendarEventCard event={event} instructorId={instructorId} onSelect={() => onSelectEvent(event)} compact />
                   </div>
                 ))}
               </div>
@@ -284,7 +290,7 @@ function WeekSchedule({ events, weekKeys, onSelectDay, onSelectEvent, onCreateEv
                     }
                     return (
                       <div key={entityKey(event.id_curso_agendado)} className="absolute" style={style}>
-                        <CalendarEventCard event={event} onSelect={() => onSelectEvent(event)} compact showTooltip={laneCount > 1 || end - start < 55} />
+                        <CalendarEventCard event={event} instructorId={instructorId} onSelect={() => onSelectEvent(event)} compact showTooltip={laneCount > 1 || end - start < 55} />
                       </div>
                     )
                   })}
@@ -482,7 +488,7 @@ export function CalendarPage() {
             <div><h2 className="m-0 text-xl font-bold text-ink">Horario semanal</h2><p className="mt-1 text-sm text-muted">Los bloques simultáneos se distribuyen en columnas paralelas.</p></div>
             <span className="rounded-full bg-red/10 px-3 py-1 text-sm font-bold text-red-dark">{events.length} actividades</span>
           </div>
-          {eventsLoading && !events.length ? <p className="text-sm text-muted">Cargando actividades…</p> : <WeekSchedule events={events} weekKeys={weekKeys} onSelectDay={setSelectedDate} onSelectEvent={setSelectedEvent} onCreateEvent={canManage ? (day, time) => openManagement(undefined, `${day}T${time}`) : undefined} />}
+          {eventsLoading && !events.length ? <p className="text-sm text-muted">Cargando actividades…</p> : <WeekSchedule events={events} weekKeys={weekKeys} instructorId={user?.instructorId} onSelectDay={setSelectedDate} onSelectEvent={setSelectedEvent} onCreateEvent={canManage ? (day, time) => openManagement(undefined, `${day}T${time}`) : undefined} />}
         </PanelCard>
       ) : view === 'month' ? (
         <PanelCard className="mt-5 w-full overflow-x-auto overflow-y-clip p-4 md:p-5">
@@ -500,7 +506,7 @@ export function CalendarPage() {
                     </div>
                     <div className="mt-2 grid gap-1">
                       {dayActivities.slice(0, 3).map((activity) => (
-                        <button key={entityKey(activity.id_curso_agendado)} className={`truncate rounded-full border px-2 py-1 text-left text-[0.68rem] font-bold ${courseColor(activity.id_curso).border} ${activity.activo ? `${courseColor(activity.id_curso).surface} ${courseColor(activity.id_curso).text}` : 'bg-line text-muted line-through'}`} type="button" onClick={() => setSelectedEvent(activity)}>
+                        <button key={entityKey(activity.id_curso_agendado)} className={`truncate rounded-full border px-2 py-1 text-left text-[0.68rem] font-bold ${courseColor(activity.id_curso).border} ${isCurrentInstructor(activity, user?.instructorId) ? 'ring-2 ring-ink ring-offset-1' : ''} ${activity.activo ? `${courseColor(activity.id_curso).surface} ${courseColor(activity.id_curso).text}` : 'bg-line text-muted line-through'}`} type="button" onClick={() => setSelectedEvent(activity)}>
                           {eventTimeRangeForDay(activity, day)} {activity.curso_nombre} · {eventRoom(activity)}
                         </button>
                       ))}
@@ -523,7 +529,7 @@ export function CalendarPage() {
               {upcomingEvents.map((event) => (
                 <li key={entityKey(event.id_curso_agendado)} className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
                   <button className="flex items-start gap-3 text-left" type="button" onClick={() => setSelectedEvent(event)}>
-                    <span className={`mt-1.5 size-3 shrink-0 rounded-full ${courseColor(event.id_curso).marker}`} aria-hidden="true" />
+                    <span className={`mt-1.5 size-3 shrink-0 rounded-full ${courseColor(event.id_curso).marker} ${isCurrentInstructor(event, user?.instructorId) ? 'ring-2 ring-ink ring-offset-2' : ''}`} aria-hidden="true" />
                     <span><strong className="block text-base text-ink">{event.curso_nombre}</strong>
                     <span className="mt-1 block text-sm text-muted">{event.curso_tema} · {event.instructor_nombre} · {eventRoom(event)}</span>
                     </span>
@@ -547,7 +553,7 @@ export function CalendarPage() {
               {!activitiesForSelectedDate.length ? <p className="mt-5 text-sm text-muted">No hay actividades para este día y filtro.</p> : (
                 <div className="mt-5 grid gap-3">
                   {activitiesForSelectedDate.map((event) => (
-                    <article key={entityKey(event.id_curso_agendado)} className={`rounded-soft border ${courseColor(event.id_curso).border} ${courseColor(event.id_curso).surface} p-4`}>
+                    <article key={entityKey(event.id_curso_agendado)} className={`rounded-soft border ${courseColor(event.id_curso).border} ${isCurrentInstructor(event, user?.instructorId) ? 'ring-2 ring-ink ring-offset-1' : ''} ${courseColor(event.id_curso).surface} p-4`}>
                       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                         <div>
                           <button className="text-left" type="button" onClick={() => { setSelectedDate(null); setSelectedEvent(event) }}><h3 className="m-0 text-base font-bold text-ink">{event.curso_nombre}</h3></button>

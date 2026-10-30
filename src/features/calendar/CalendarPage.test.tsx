@@ -19,8 +19,8 @@ function NavigationState() {
   return <output data-testid="navigation-state">{JSON.stringify(location.state)}</output>
 }
 
-function renderCalendar(role: AuthUser['role']) {
-  const user: AuthUser = { authenticated: true, role, userId: 7, displayName: `Cuenta ${role}` }
+function renderCalendar(role: AuthUser['role'], instructorId?: number) {
+  const user: AuthUser = { authenticated: true, role, userId: 7, displayName: `Cuenta ${role}`, instructorId }
   return render(
     <AuthContext.Provider value={{ user, isCheckingSession: false, login: async () => undefined, logout: async () => undefined }}>
       <MemoryRouter initialEntries={['/calendario']}>
@@ -34,6 +34,44 @@ function renderCalendar(role: AuthUser['role']) {
 }
 
 describe('CalendarPage', () => {
+  it('remarca los eventos del instructor actual y deja intactos los demás', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/calendar/rooms') return jsonResponse([])
+      if (url.startsWith('/api/calendar/events?')) {
+        const from = new URL(url, 'http://localhost').searchParams.get('from')?.slice(0, 10) ?? '2026-10-26'
+        return jsonResponse([2, 3].map((id_instructor, index) => ({
+          id_curso_agendado: index + 1,
+          id_curso: index + 1,
+          id_instructor,
+          id_sala: null,
+          fecha_hora: `${from}T18:00:00`,
+          fecha_hora_fin: `${from}T19:00:00`,
+          activo: true,
+          id_horario_recurrente: null,
+          modificado_manualmente: false,
+          curso_nombre: `Clase ${id_instructor}`,
+          curso_tema: 'Técnica',
+          curso_descripcion: null,
+          tipo_curso: 'HABITUAL',
+          instructor_nombre: `Instructor ${id_instructor}`,
+          sala_nombre: null,
+          limite_participantes: null,
+          mostrar_asistentes: false,
+          asistentes: null,
+          completo: false,
+          mi_participacion: null,
+        })))
+      }
+      throw new Error(`Ruta inesperada: ${url}`)
+    }))
+    renderCalendar('INSTRUCTOR', 2)
+
+    const assignedEvent = await screen.findByRole('button', { name: /Clase 2/u }, { timeout: 3000 })
+    const otherEvent = screen.getByRole('button', { name: /Clase 3/u })
+    expect(assignedEvent.className).toContain('ring-2')
+    expect(otherEvent.className).not.toContain('ring-2')
+  })
+
   it('abre la creación al hacer clic en un hueco libre y conserva día y hora', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/calendar/rooms') return jsonResponse([{ id_sala: 3, nombre: 'Sala Multiusos', activo: true }])
