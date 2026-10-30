@@ -53,7 +53,7 @@ export function AppLayout() {
 
   return (
     <div className="grid min-h-screen md:grid-cols-[18.25rem_minmax(0,1fr)]">
-      <aside className="flex min-h-full flex-col bg-sidebar px-6 py-7 text-cream md:min-h-screen">
+      <aside className="flex min-h-full flex-col bg-sidebar px-6 py-7 text-cream md:sticky md:top-0 md:h-screen md:min-h-0 md:self-start">
         <div className="flex items-center gap-3 pb-8">
           <img className="size-14 object-contain" src="/logo-instituto-wushu.png" alt="Instituto de Wu-shu de Barcelona" />
           <div>
@@ -89,13 +89,14 @@ export function AppLayout() {
           ))}
         </nav>
 
-        <div className="mt-auto grid gap-3">
-          <div className="rounded-panel border border-white/15 bg-white/6 p-4 text-sm text-cream-muted">
-            <strong className="block text-cream">{user?.displayName}</strong>
-            <button className="mt-2 text-sm font-bold text-cream-muted hover:text-white" type="button" onClick={() => void logout()}>
-              Cerrar sesión
-            </button>
-          </div>
+        <div className="mt-4 rounded-panel border border-white/15 bg-white/6 p-4 text-sm text-cream-muted">
+          <strong className="block text-cream">{user?.displayName}</strong>
+          <button className="mt-2 text-sm font-bold text-cream-muted hover:text-white" type="button" onClick={() => void logout()}>
+            Cerrar sesión
+          </button>
+        </div>
+
+        <div className="mt-auto pt-4">
           <p className="m-0 rounded-panel border border-white/15 bg-white/6 p-4 text-sm text-cream-muted">
             v0 · Herramienta de administración
           </p>
