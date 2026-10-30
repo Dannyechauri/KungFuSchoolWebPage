@@ -28,6 +28,7 @@ function profile(learning: { percent: number; updatedOn: string } | null) {
 function mockApi() {
   let learning: { percent: number; updatedOn: string } | null = null
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.endsWith('/api/me/promotions')) return new Response(JSON.stringify([]), { status: 200 })
     if (url.endsWith('/api/me/birthdays/today')) {
       return new Response(JSON.stringify([{ id: 2, name: 'Ana Sol' }]), { status: 200 })
     }
@@ -74,5 +75,29 @@ describe('ProfilePage', () => {
     await user.click(screen.getByRole('button', { name: 'Dejar de aprender' }))
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Marcar como aprendiendo' })).toHaveLength(2))
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(true)
+  })
+
+  it('muestra la felicitación del ascenso hasta confirmar recepción', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/me/birthdays/today')) return new Response(JSON.stringify([]), { status: 200 })
+      if (url.endsWith('/api/me/promotions')) {
+        return new Response(JSON.stringify([{ id_aviso: '19', grado_anterior: 'Cinta Verde', grado_nuevo: 'Cinta Azul' }]), { status: 200 })
+      }
+      if (url.endsWith('/api/me/promotions/19/acknowledge') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ acknowledged: true }), { status: 200 })
+      }
+      return new Response(JSON.stringify(profile(null)), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<ProfilePage />)
+
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(screen.getByText('Cinta Verde')).toBeTruthy()
+    expect(screen.getByText('Cinta Azul')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Confirmar recepción' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(fetchMock).toHaveBeenCalledWith('/api/me/promotions/19/acknowledge', expect.objectContaining({ method: 'POST' }))
   })
 })

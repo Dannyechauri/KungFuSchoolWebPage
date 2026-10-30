@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useOutletContext } from 'react-router'
 import { apiRequest } from '../api/client'
 import { BirthdayPanel } from '../components/BirthdayPanel'
 import { PanelCard } from '../components/PanelCard'
@@ -33,6 +34,12 @@ type GradeForm = {
 type ProfileForm = Omit<GradeForm, 'optional'> & {
   optional: boolean | null
   learnedOn: string | null
+}
+
+type PromotionNotification = {
+  id_aviso: string
+  grado_anterior: string
+  grado_nuevo: string
 }
 
 const dateFormatter = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -148,11 +155,30 @@ function StyleFormGroup({ style, forms, onChanged }: { style: string; forms: Pro
 }
 
 export function ProfilePage() {
+  const onPromotionNotificationsChange = useOutletContext<{ onPendingPromotionNoticesChange: (count: number) => void } | undefined>()?.onPendingPromotionNoticesChange
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
+  const [promotionNotifications, setPromotionNotifications] = useState<PromotionNotification[]>([])
+  const [promotionError, setPromotionError] = useState<string | null>(null)
+  const [acknowledgingPromotionId, setAcknowledgingPromotionId] = useState<string | null>(null)
   const handleFormChanged = (message: string) => { setNotice(message); setReloadKey((key) => key + 1) }
+
+  useEffect(() => {
+    let active = true
+    apiRequest<PromotionNotification[]>('/api/me/promotions')
+      .then((loaded) => {
+        if (!active) return
+        setPromotionNotifications(loaded)
+        onPromotionNotificationsChange?.(loaded.length)
+        setPromotionError(null)
+      })
+      .catch((error: unknown) => {
+        if (active) setPromotionError(error instanceof Error ? error.message : 'No se pudieron cargar las felicitaciones pendientes.')
+      })
+    return () => { active = false }
+  }, [onPromotionNotificationsChange])
 
   useEffect(() => {
     let active = true
@@ -195,8 +221,46 @@ export function ProfilePage() {
   const requiredGradeForms = gradeForms.filter((form) => !form.optional)
   const knownRequired = requiredGradeForms.filter((form) => form.known).length
 
+  async function acknowledgePromotion(notification: PromotionNotification) {
+    setAcknowledgingPromotionId(notification.id_aviso)
+    try {
+      await apiRequest(`/api/me/promotions/${notification.id_aviso}/acknowledge`, { method: 'POST' })
+      const remaining = promotionNotifications.filter((item) => item.id_aviso !== notification.id_aviso)
+      setPromotionNotifications(remaining)
+      onPromotionNotificationsChange?.(remaining.length)
+      setPromotionError(null)
+    } catch (error: unknown) {
+      setPromotionError(error instanceof Error ? error.message : 'No se pudo confirmar la recepción.')
+    } finally {
+      setAcknowledgingPromotionId(null)
+    }
+  }
+
   return (
     <section className="max-w-6xl">
+      {promotionNotifications[0] ? (
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-ink/75 p-4" role="presentation">
+          <div className="w-full max-w-xl" role="dialog" aria-modal="true" aria-labelledby="promotion-title">
+            <PanelCard className="border-t-4 border-gold p-6 shadow-2xl md:p-8">
+              <p className="m-0 text-xs font-black uppercase tracking-[0.12em] text-red-dark">Nuevo grado</p>
+              <h2 id="promotion-title" className="mt-3 text-3xl font-bold text-ink">¡Felicidades, {student.name}!</h2>
+              <p className="mt-4 text-base leading-7 text-muted">
+                Has ascendido de <strong className="text-ink">{promotionNotifications[0].grado_anterior}</strong> a <strong className="text-ink">{promotionNotifications[0].grado_nuevo}</strong>. ¡Enhorabuena por este logro!
+              </p>
+              {promotionError ? <p className="mt-4 text-sm font-bold text-red-dark" role="alert">{promotionError}</p> : null}
+              <button
+                className="mt-6 min-h-11 rounded-full bg-red px-5 text-sm font-bold text-white hover:bg-red-dark disabled:opacity-60"
+                type="button"
+                autoFocus
+                disabled={acknowledgingPromotionId === promotionNotifications[0].id_aviso}
+                onClick={() => void acknowledgePromotion(promotionNotifications[0]!)}
+              >
+                {acknowledgingPromotionId === promotionNotifications[0].id_aviso ? 'Confirmando…' : 'Confirmar recepción'}
+              </button>
+            </PanelCard>
+          </div>
+        </div>
+      ) : null}
       <p className="mb-2 text-xs font-black tracking-[0.12em] text-red uppercase">Mi ficha</p>
       <h1 className="m-0 text-4xl font-bold tracking-tight text-ink md:text-5xl">{student.name}</h1>
       <p className="mt-4 max-w-2xl text-base leading-7 text-muted">

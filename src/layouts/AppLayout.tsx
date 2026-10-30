@@ -17,6 +17,7 @@ export function AppLayout() {
   const location = useLocation()
   const [pendingConfirmations, setPendingConfirmations] = useState(0)
   const [pendingCancellationNotices, setPendingCancellationNotices] = useState(0)
+  const [pendingPromotionNotices, setPendingPromotionNotices] = useState(0)
   const canConfirm = user?.role === 'USER' || user?.role === 'INSTRUCTOR'
 
   useEffect(() => {
@@ -26,13 +27,15 @@ export function AppLayout() {
     async function refreshPendingConfirmations() {
       const requestId = ++latestRequest
       try {
-        const [pending, cancellationNotices] = await Promise.all([
+        const [pending, cancellationNotices, promotionNotices] = await Promise.all([
           apiRequest<{ id: number }[]>('/api/performance/confirmations/pending', { signal: controller.signal }),
           apiRequest<{ id_aviso: number }[]>('/api/calendar/cancellation-notifications', { signal: controller.signal }),
+          apiRequest<{ id_aviso: string }[]>('/api/me/promotions', { signal: controller.signal }),
         ])
         if (!controller.signal.aborted && requestId === latestRequest) {
           setPendingConfirmations(pending.length)
           setPendingCancellationNotices(cancellationNotices.length)
+          setPendingPromotionNotices(promotionNotices.length)
         }
       } catch {
         return
@@ -51,6 +54,7 @@ export function AppLayout() {
 
   const hasPendingConfirmations = canConfirm && pendingConfirmations > 0
   const hasPendingCancellationNotices = canConfirm && pendingCancellationNotices > 0
+  const hasPendingPromotionNotices = canConfirm && pendingPromotionNotices > 0
   const items = [
     ...(user?.role === 'ADMIN' ? [navigationItems.home] : []),
     ...(hasOwnProfile(user?.role) ? [navigationItems.profile] : []),
@@ -80,6 +84,7 @@ export function AppLayout() {
                 `flex min-h-14 items-center gap-3 rounded-panel px-3.5 text-base font-bold transition-colors ${
                   item === navigationItems.performance && hasPendingConfirmations
                     || item === navigationItems.calendar && hasPendingCancellationNotices
+                    || item === navigationItems.profile && hasPendingPromotionNotices
                     ? 'bg-gold text-ink hover:bg-gold/90'
                     : isActive ? 'bg-white/12 text-white' : 'text-cream-muted hover:bg-white/8 hover:text-white'
                 }`
@@ -97,6 +102,11 @@ export function AppLayout() {
               {item === navigationItems.calendar && hasPendingCancellationNotices ? (
                 <span className="ml-auto grid size-7 shrink-0 place-items-center rounded-full bg-red-dark text-xs font-bold text-white" aria-label={`${pendingCancellationNotices} ${pendingCancellationNotices === 1 ? 'aviso de cancelación pendiente' : 'avisos de cancelación pendientes'}`}>
                   {pendingCancellationNotices > 99 ? '99+' : pendingCancellationNotices}
+                </span>
+              ) : null}
+              {item === navigationItems.profile && hasPendingPromotionNotices ? (
+                <span className="ml-auto grid size-7 shrink-0 place-items-center rounded-full bg-red-dark text-xs font-bold text-white" aria-label={`${pendingPromotionNotices} ${pendingPromotionNotices === 1 ? 'aviso de ascenso pendiente' : 'avisos de ascenso pendientes'}`}>
+                  {pendingPromotionNotices > 99 ? '99+' : pendingPromotionNotices}
                 </span>
               ) : null}
             </NavLink>
@@ -121,6 +131,7 @@ export function AppLayout() {
         <Outlet context={{
           onPendingConfirmationsChange: setPendingConfirmations,
           onPendingCancellationNoticesChange: setPendingCancellationNotices,
+          onPendingPromotionNoticesChange: setPendingPromotionNotices,
         }} />
       </main>
     </div>

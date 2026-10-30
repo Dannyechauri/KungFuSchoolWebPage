@@ -361,15 +361,15 @@ export function CalendarPage() {
   const [eventsVersion, setEventsVersion] = useState(0)
 
   useEffect(() => {
-    const studentId = user?.studentId
-    if (studentId === null || studentId === undefined) return
+    const ownerId = user?.studentId
+    if (typeof ownerId !== 'number') return
     let active = true
     async function refreshNotifications() {
       try {
         const notices = await getPendingCancellationNotifications()
         if (active) {
           setCancellationNotifications(notices)
-          setNotificationOwnerId(studentId)
+          setNotificationOwnerId(ownerId ?? null)
           onPendingCancellationNoticesChange?.(notices.length)
           setNotificationError(null)
         }
