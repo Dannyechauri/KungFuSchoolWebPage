@@ -67,6 +67,19 @@ describe('acceso de prealfa en la web', () => {
     expect(screen.getByRole('link', { name: /mi ficha/i })).toBeTruthy()
   })
 
+  it('muestra en Calendario el número de avisos de cancelación pendientes', async () => {
+    mockedFetch.mockImplementation((url: string) => {
+      if (url.endsWith('/api/performance/confirmations/pending')) return Promise.resolve(jsonResponse([]))
+      if (url.endsWith('/api/calendar/cancellation-notifications')) {
+        return Promise.resolve(jsonResponse([{ id_aviso: 1 }, { id_aviso: 2 }]))
+      }
+      throw new Error(`Ruta inesperada en prueba: ${url}`)
+    })
+    renderLayout('USER')
+
+    expect(await screen.findByLabelText('2 avisos de cancelación pendientes')).toBeTruthy()
+  })
+
   it('muestra al alumno sus datos y las formas que sabe', async () => {
     mockedFetch.mockImplementation((url: string) => {
       if (url.endsWith('/api/auth/me')) return Promise.resolve(jsonResponse(sessionFor('USER')))
@@ -84,7 +97,7 @@ describe('acceso de prealfa en la web', () => {
     })
 
     render(
-      <MemoryRouter initialEntries={['/mi-ficha']}>
+      <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>,
     )

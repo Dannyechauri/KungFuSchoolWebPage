@@ -25,7 +25,7 @@ function AuthenticatedApp() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-      <Route index element={user.role === 'ADMIN' ? <HomePage /> : <Navigate to="/calendario" replace />} />
+      <Route index element={user.role === 'ADMIN' ? <HomePage /> : <Navigate to="/mi-ficha" replace />} />
         <Route path="calendario" element={<CalendarPage />} />
         <Route path="mi-desempeno" element={<PerformancePage />} />
         <Route

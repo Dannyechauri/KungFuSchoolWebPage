@@ -22,6 +22,15 @@ export type CalendarRoom = {
   activo: boolean
 }
 
+export type CancellationNotification = {
+  id_aviso: EntityId
+  id_curso_agendado: EntityId
+  curso_nombre: string
+  fecha_hora: string
+  fecha_hora_fin: string
+  sala_nombre: string | null
+}
+
 export type CalendarEvent = {
   id_curso_agendado: EntityId
   id_curso: EntityId
@@ -125,6 +134,14 @@ export function getCalendarEvents(from: string, to: string, roomId: string | nul
   const query = new URLSearchParams({ from, to })
   if (roomId) query.set('roomId', roomId)
   return apiRequest<CalendarEvent[]>(`/api/calendar/events?${query.toString()}`)
+}
+
+export function getPendingCancellationNotifications() {
+  return apiRequest<CancellationNotification[]>('/api/calendar/cancellation-notifications')
+}
+
+export function acknowledgeCancellationNotification(id: EntityId) {
+  return apiRequest<{ acknowledged: boolean }>(`/api/calendar/cancellation-notifications/${entityKey(id)}/acknowledge`, { method: 'POST' })
 }
 
 export function getRecurringRules() {

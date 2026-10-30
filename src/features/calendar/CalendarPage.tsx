@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { useLocation, useNavigate } from 'react-router'
+import { useLocation, useNavigate, useOutletContext } from 'react-router'
 import { PanelCard } from '../../components/PanelCard'
 import { SelectField } from '../../components/SelectField'
 import { useAuth } from '../auth/useAuth'
 import { canManageCalendar, canManageSchoolData, hasOwnProfile } from '../auth/permissions'
 import {
   entityKey,
+  acknowledgeCancellationNotification,
   getCalendarEvents,
+  getPendingCancellationNotifications,
   getCalendarRooms,
   type CalendarEvent,
   type CalendarRoom,
+  type CancellationNotification,
 } from './calendarApi'
 import { calendarErrorMessage } from './calendarErrors'
 import { EventEditor, type EventEditScope } from './EventEditor'
@@ -307,6 +310,7 @@ function WeekSchedule({ events, weekKeys, instructorId, onSelectDay, onSelectEve
 
 export function CalendarPage() {
   const { user } = useAuth()
+  const onPendingCancellationNoticesChange = useOutletContext<{ onPendingCancellationNoticesChange: (count: number) => void } | undefined>()?.onPendingCancellationNoticesChange
   const canManage = canManageCalendar(user?.role)
   const canParticipate = hasOwnProfile(user?.role)
   const canEditParticipation = canManageSchoolData(user?.role)
@@ -345,12 +349,43 @@ export function CalendarPage() {
 
   const [rooms, setRooms] = useState<CalendarRoom[]>([])
   const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [cancellationNotifications, setCancellationNotifications] = useState<CancellationNotification[]>([])
+  const [notificationOwnerId, setNotificationOwnerId] = useState<number | null>(null)
+  const [notificationError, setNotificationError] = useState<string | null>(null)
+  const [acknowledgingNoticeId, setAcknowledgingNoticeId] = useState<string | null>(null)
   const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null)
   const [loadedEventsKey, setLoadedEventsKey] = useState<string | null>(null)
   const [metadataError, setMetadataError] = useState<string | null>(null)
   const [eventsError, setEventsError] = useState<string | null>(null)
   const [metadataVersion, setMetadataVersion] = useState(0)
   const [eventsVersion, setEventsVersion] = useState(0)
+
+  useEffect(() => {
+    const studentId = user?.studentId
+    if (studentId === null || studentId === undefined) return
+    let active = true
+    async function refreshNotifications() {
+      try {
+        const notices = await getPendingCancellationNotifications()
+        if (active) {
+          setCancellationNotifications(notices)
+          setNotificationOwnerId(studentId)
+          onPendingCancellationNoticesChange?.(notices.length)
+          setNotificationError(null)
+        }
+      } catch (error: unknown) {
+        if (active) setNotificationError(calendarErrorMessage(error))
+      }
+    }
+    void refreshNotifications()
+    const interval = window.setInterval(() => void refreshNotifications(), 30_000)
+    window.addEventListener('focus', refreshNotifications)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshNotifications)
+    }
+  }, [onPendingCancellationNoticesChange, user?.studentId])
 
   const today = madridNowParts()
   const weekKeys = useMemo(() => weekDateKeys(weekDate), [weekDate])
@@ -434,6 +469,22 @@ export function CalendarPage() {
     })
   }
 
+  async function confirmCancellationNotification(notification: CancellationNotification) {
+    const noticeId = entityKey(notification.id_aviso)
+    setAcknowledgingNoticeId(noticeId)
+    try {
+      await acknowledgeCancellationNotification(notification.id_aviso)
+      const remaining = cancellationNotifications.filter((notice) => entityKey(notice.id_aviso) !== noticeId)
+      setCancellationNotifications(remaining)
+      onPendingCancellationNoticesChange?.(remaining.length)
+      setNotificationError(null)
+    } catch (error: unknown) {
+      setNotificationError(calendarErrorMessage(error))
+    } finally {
+      setAcknowledgingNoticeId(null)
+    }
+  }
+
   if (metadataLoading && eventsLoading) {
     return <section className="w-full text-muted">Cargando agenda y salas…</section>
   }
@@ -443,6 +494,31 @@ export function CalendarPage() {
       <p className="mb-2 text-xs font-black tracking-[0.12em] text-red uppercase">Calendario</p>
       <h1 className="m-0 text-4xl font-bold tracking-tight text-ink md:text-5xl">Agenda de clases y actividades</h1>
       <p className="mt-4 max-w-3xl text-base leading-7 text-muted">Consulta las actividades por semana, mes o sala. Las sesiones simultáneas se muestran en paralelo cuando ocupan salas diferentes.</p>
+
+      {notificationError ? <p className="mt-4 text-sm font-bold text-red-dark" role="alert">No se pudieron actualizar los avisos: {notificationError}</p> : null}
+      {notificationOwnerId === user?.studentId && cancellationNotifications.length ? (
+        <section className="mt-5 grid gap-3" aria-label="Avisos de sesiones canceladas">
+          {cancellationNotifications.map((notification) => (
+            <PanelCard key={entityKey(notification.id_aviso)} className="flex flex-col gap-3 border-l-4 border-red p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="m-0 text-xs font-black uppercase tracking-wide text-red-dark">Sesión cancelada</p>
+                <p className="mt-1 mb-0 font-bold text-ink">{notification.curso_nombre}</p>
+                <p className="mt-1 mb-0 text-sm text-muted">
+                  {formatCalendarDate(notification.fecha_hora.slice(0, 10), { weekday: 'long', day: 'numeric', month: 'long' })} · {formatTime(notification.fecha_hora)}–{formatTime(notification.fecha_hora_fin)} · {notification.sala_nombre ?? 'Sala sin asignar'}
+                </p>
+              </div>
+              <button
+                className={`${buttonClass} shrink-0 bg-red text-white hover:bg-red-dark disabled:opacity-60`}
+                type="button"
+                onClick={() => void confirmCancellationNotification(notification)}
+                disabled={acknowledgingNoticeId === entityKey(notification.id_aviso)}
+              >
+                {acknowledgingNoticeId === entityKey(notification.id_aviso) ? 'Confirmando…' : 'Confirmar que la vi'}
+              </button>
+            </PanelCard>
+          ))}
+        </section>
+      ) : null}
 
       {metadataError ? (
         <PanelCard className="mt-5 p-4">
