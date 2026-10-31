@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { apiRequest } from '../api/client'
 import { useAuth } from '../features/auth/useAuth'
+import { PasswordChangeForm } from '../features/auth/PasswordChangeForm'
 import { canViewSchoolData, hasOwnProfile } from '../features/auth/permissions'
 
 const navigationItems = {
@@ -115,6 +116,7 @@ export function AppLayout() {
 
         <div className="mt-4 rounded-panel border border-white/15 bg-white/6 p-4 text-sm text-cream-muted">
           <strong className="block text-cream">{user?.displayName}</strong>
+          <PasswordChangeForm onPasswordChanged={logout} />
           <button className="mt-2 text-sm font-bold text-cream-muted hover:text-white" type="button" onClick={() => void logout()}>
             Cerrar sesión
           </button>
