@@ -197,6 +197,10 @@ export function cancelCalendarEvent(id: EntityId) {
   return apiRequest(`/api/calendar/events/${entityKey(id)}/cancel`, { method: 'POST' })
 }
 
+export function deleteCalendarEvent(id: EntityId) {
+  return apiRequest(`/api/calendar/events/${entityKey(id)}`, { method: 'DELETE' })
+}
+
 export function joinCalendarEvent(id: EntityId, scope: ParticipationScope, role: ParticipationRole) {
   return apiRequest<{ joined: EntityId[]; skipped: string[] }>(`/api/calendar/events/${entityKey(id)}/participation`, {
     method: 'POST',

@@ -180,6 +180,14 @@ export function PerformancePage() {
         }),
       })
       setNotice('Desempeño de esta fecha reemplazado. Las personas seleccionadas recibirán una solicitud de confirmación.')
+      setPhysicalWork(false)
+      setCardioWork(false)
+      setStretching(false)
+      setAttendedClass(false)
+      setSelectedForms([])
+      setSelectedConfirmers([])
+      setFormSearch('')
+      setConfirmerSearch('')
       setReloadKey((key) => key + 1)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'No se pudo guardar el desempeño.')

@@ -9,6 +9,7 @@ import {
   entityKey,
   acknowledgeCancellationNotification,
   acknowledgeEventResponse,
+  deleteCalendarEvent,
   getCalendarEvents,
   getEventNotifications,
   getPendingCancellationNotifications,
@@ -137,6 +138,22 @@ function tooltipPosition(button: HTMLButtonElement) {
   const left = rect.right + width + 12 < window.innerWidth ? rect.right + 8 : Math.max(8, rect.left - width - 8)
   const top = Math.max(8, Math.min(rect.top, window.innerHeight - height - 8))
   return { left, top }
+}
+
+function EventDescription({ session, course }: { session?: string | null; course: string | null }) {
+  const [open, setOpen] = useState(false)
+  if (!session && !course) return null
+  return (
+    <div>
+      <button className={`${buttonClass} border border-line text-muted`} type="button" aria-expanded={open} onClick={() => setOpen((current) => !current)}>Descripción</button>
+      {open ? (
+        <div className="mt-3 grid gap-2">
+          {session ? <p className="m-0 whitespace-pre-wrap leading-6 text-ink">{session}</p> : null}
+          {course ? <p className="m-0 whitespace-pre-wrap leading-6 text-muted">{course}</p> : null}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function CalendarEventCard({ event, instructorId, onSelect, compact = false, showTooltip = false }: { event: CalendarEvent; instructorId?: number | null; onSelect: () => void; compact?: boolean; showTooltip?: boolean }) {
@@ -339,11 +356,25 @@ export function CalendarPage() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
   const [editing, setEditing] = useState<{ eventKey: string; scope: EventEditScope } | null>(null)
   const [eventNotice, setEventNotice] = useState<{ eventKey: string; text: string } | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   function closeEvent() {
     setSelectedEvent(null)
     setEditing(null)
     setEventNotice(null)
+    setDeleteError(null)
+  }
+
+  async function deleteEvent(event: CalendarEvent) {
+    if (!window.confirm(`¿Eliminar definitivamente «${event.curso_nombre}»? Esta acción no se puede deshacer.`)) return
+    setDeleteError(null)
+    try {
+      await deleteCalendarEvent(event.id_curso_agendado)
+      closeEvent()
+      setEventsVersion((version) => version + 1)
+    } catch (error: unknown) {
+      setDeleteError(calendarErrorMessage(error))
+    }
   }
 
   useEffect(() => {
@@ -785,8 +816,7 @@ export function CalendarPage() {
                 {shownNotice ? <p className="m-0 rounded-soft bg-green-100 p-3 text-sm font-bold text-green-800" role="status">{shownNotice}</p> : null}
                 <p className="m-0 text-base font-bold text-red-dark">{eventTimeRange(shownEvent)}</p>
                 <p className="m-0 text-muted">{shownEvent.curso_tema}</p>
-                {shownEvent.descripcion ? <p className="m-0 whitespace-pre-wrap leading-6 text-ink">{shownEvent.descripcion}</p> : null}
-                {shownEvent.curso_descripcion ? <p className="m-0 leading-6 text-muted">{shownEvent.curso_descripcion}</p> : null}
+                <EventDescription key={entityKey(shownEvent.id_curso_agendado)} session={shownEvent.descripcion} course={shownEvent.curso_descripcion} />
                 <dl className="grid gap-3 rounded-soft border border-line bg-white/60 p-4 sm:grid-cols-2">
                   <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Instructor</dt><dd className="mt-1 font-semibold text-ink">{shownEvent.instructor_nombre}</dd></div>
                   <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Sala</dt><dd className="mt-1 font-semibold text-ink">{eventRoom(shownEvent)}</dd></div>
@@ -809,7 +839,9 @@ export function CalendarPage() {
               <div className="mt-5 flex flex-wrap gap-3 border-t border-line pt-4">
                 {canManage && shownEvent.puede_modificar && shownEvent.activo ? <button className={`${buttonClass} bg-red text-white`} type="button" onClick={() => { setEventNotice(null); setEditing({ eventKey: shownEventKey, scope: 'event' }) }}>{shownEvent.id_horario_recurrente ? 'Editar esta sesión' : 'Editar sesión'}</button> : null}
                 {canManage && shownEvent.puede_modificar && shownEvent.activo && shownEvent.id_horario_recurrente ? <button className={`${buttonClass} border border-red text-red-dark`} type="button" onClick={() => { setEventNotice(null); setEditing({ eventKey: shownEventKey, scope: 'rule' }) }}>Editar horario habitual</button> : null}
+                {user?.role === 'ADMIN' && !shownEvent.activo ? <button className={`${buttonClass} border border-red text-red-dark`} type="button" onClick={() => void deleteEvent(shownEvent)}>Eliminar actividad</button> : null}
                 <button className={`${buttonClass} border border-line text-muted`} type="button" onClick={closeEvent}>Cerrar</button>
+                {deleteError ? <p className="m-0 w-full text-sm font-bold text-red-dark" role="alert">{deleteError}</p> : null}
               </div>
               )}
             </PanelCard>

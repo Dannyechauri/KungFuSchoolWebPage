@@ -205,6 +205,114 @@ describe('CalendarPage', () => {
     expect(screen.queryByRole('button', { name: 'Editar sesión' })).toBeNull()
   })
 
+  it('oculta la descripción hasta pulsar el botón y la vuelve a ocultar al pulsarlo de nuevo', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/calendar/rooms') return jsonResponse([])
+      if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(noEventNotifications)
+      if (/\/api\/calendar\/events\/\d+\/participants$/u.test(url)) return jsonResponse([])
+      if (url.startsWith('/api/calendar/events?')) {
+        const from = new URL(url, 'http://localhost').searchParams.get('from')?.slice(0, 10) ?? '2026-10-26'
+        return jsonResponse([{ ...weekEvent(from, 1, 'Clase con detalle', 18, false), descripcion: 'Traer ropa de entrenamiento', curso_descripcion: 'Formas básicas del estilo' }])
+      }
+      throw new Error(`Ruta inesperada: ${url}`)
+    }))
+    const user = userEvent.setup()
+    renderCalendar('USER')
+
+    await user.click(await screen.findByRole('button', { name: /Clase con detalle/u }, { timeout: 3000 }))
+    const toggle = await screen.findByRole('button', { name: 'Descripción' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('Traer ropa de entrenamiento')).toBeNull()
+
+    await user.click(toggle)
+    expect(screen.getByText('Traer ropa de entrenamiento')).toBeTruthy()
+    expect(screen.getByText('Formas básicas del estilo')).toBeTruthy()
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+
+    await user.click(toggle)
+    expect(screen.queryByText('Traer ropa de entrenamiento')).toBeNull()
+    expect(screen.queryByText('Formas básicas del estilo')).toBeNull()
+  })
+
+  it('no muestra el botón de descripción cuando la actividad no tiene ninguna', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/calendar/rooms') return jsonResponse([])
+      if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(noEventNotifications)
+      if (/\/api\/calendar\/events\/\d+\/participants$/u.test(url)) return jsonResponse([])
+      if (url.startsWith('/api/calendar/events?')) {
+        const from = new URL(url, 'http://localhost').searchParams.get('from')?.slice(0, 10) ?? '2026-10-26'
+        return jsonResponse([weekEvent(from, 1, 'Clase sin detalle', 18, false)])
+      }
+      throw new Error(`Ruta inesperada: ${url}`)
+    }))
+    const user = userEvent.setup()
+    renderCalendar('USER')
+
+    await user.click(await screen.findByRole('button', { name: /Clase sin detalle/u }, { timeout: 3000 }))
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Descripción' })).toBeNull()
+  })
+
+  it('permite al administrador eliminar una actividad cancelada y a nadie más', async () => {
+    let cancelledStillExists = true
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/calendar/rooms') return jsonResponse([])
+      if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(noEventNotifications)
+      if (/\/api\/calendar\/events\/\d+\/participants$/u.test(url)) return jsonResponse([])
+      if (url === '/api/calendar/events/1' && init?.method === 'DELETE') {
+        cancelledStillExists = false
+        return jsonResponse({ id_curso_agendado: 1, deleted: true })
+      }
+      if (url.startsWith('/api/calendar/events?')) {
+        const from = new URL(url, 'http://localhost').searchParams.get('from')?.slice(0, 10) ?? '2026-10-26'
+        return jsonResponse([
+          ...(cancelledStillExists ? [{ ...weekEvent(from, 1, 'Clase cancelada', 18, true), activo: false }] : []),
+          weekEvent(from, 2, 'Clase activa', 20, true),
+        ])
+      }
+      throw new Error(`Ruta inesperada: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const user = userEvent.setup()
+    renderCalendar('ADMIN')
+
+    await user.click(await screen.findByRole('button', { name: /Clase activa/u }, { timeout: 3000 }))
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Eliminar actividad' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }))
+
+    await user.click(screen.getByRole('button', { name: /Clase cancelada/u }))
+    await user.click(await screen.findByRole('button', { name: 'Eliminar actividad' }))
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Clase cancelada/u })).toBeNull())
+    expect(fetchMock).toHaveBeenCalledWith('/api/calendar/events/1', expect.objectContaining({ method: 'DELETE' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('no ofrece eliminar actividades canceladas a un instructor', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/calendar/rooms') return jsonResponse([])
+      if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(noEventNotifications)
+      if (/\/api\/calendar\/events\/\d+\/participants$/u.test(url)) return jsonResponse([])
+      if (url.startsWith('/api/calendar/events?')) {
+        const from = new URL(url, 'http://localhost').searchParams.get('from')?.slice(0, 10) ?? '2026-10-26'
+        return jsonResponse([{ ...weekEvent(from, 1, 'Clase cancelada', 18, true), activo: false }])
+      }
+      throw new Error(`Ruta inesperada: ${url}`)
+    }))
+    const user = userEvent.setup()
+    renderCalendar('INSTRUCTOR', 2)
+
+    await user.click(await screen.findByRole('button', { name: /Clase cancelada/u }, { timeout: 3000 }))
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Eliminar actividad' })).toBeNull()
+  })
+
   it('abre la creación al hacer clic en un hueco libre y conserva día y hora', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/calendar/rooms') return jsonResponse([{ id_sala: 3, nombre: 'Sala Multiusos', activo: true }])
