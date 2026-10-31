@@ -330,10 +330,12 @@ export function CalendarManagementPage() {
                       </span>
                       <span className="mt-1 block text-xs text-muted">Desde {formatCalendarDate(rule.fecha_inicio)}{rule.fecha_fin ? ` hasta ${formatCalendarDate(rule.fecha_fin)}` : ' · sin fecha final'}</span>
                     </div>
-                    <div className="flex gap-3">
-                      <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => { setSaveError(null); setNotice(null); setFormTarget({ kind: 'rule-edit', rule }) }}>Editar</button>
-                      <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => void cancelRule(rule)}>Cancelar regla</button>
-                    </div>
+                    {rule.puede_modificar ? (
+                      <div className="flex gap-3">
+                        <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => { setSaveError(null); setNotice(null); setFormTarget({ kind: 'rule-edit', rule }) }}>Editar</button>
+                        <button className="text-sm font-bold text-red-dark underline" type="button" onClick={() => void cancelRule(rule)}>Cancelar regla</button>
+                      </div>
+                    ) : null}
                   </div>
                 </li>
               ))}

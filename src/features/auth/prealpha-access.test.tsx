@@ -67,17 +67,33 @@ describe('acceso de prealfa en la web', () => {
     expect(screen.getByRole('link', { name: /mi ficha/i })).toBeTruthy()
   })
 
-  it('muestra en Calendario el número de avisos de cancelación pendientes', async () => {
+  it('suma cancelaciones, solicitudes y respuestas de evento en el contador de Calendario', async () => {
     mockedFetch.mockImplementation((url: string) => {
       if (url.endsWith('/api/performance/confirmations/pending')) return Promise.resolve(jsonResponse([]))
+      if (url.endsWith('/api/me/promotions')) return Promise.resolve(jsonResponse([]))
       if (url.endsWith('/api/calendar/cancellation-notifications')) {
         return Promise.resolve(jsonResponse([{ id_aviso: 1 }, { id_aviso: 2 }]))
       }
+      if (url.endsWith('/api/calendar/event-notifications')) {
+        return Promise.resolve(jsonResponse({ requests: [{ id_curso_agendado: 3 }], responses: [{ id_aviso: 4 }] }))
+      }
       throw new Error(`Ruta inesperada en prueba: ${url}`)
     })
-    renderLayout('USER')
+    renderLayout('INSTRUCTOR')
 
-    expect(await screen.findByLabelText('2 avisos de cancelación pendientes')).toBeTruthy()
+    expect(await screen.findByLabelText('4 avisos de calendario pendientes')).toBeTruthy()
+  })
+
+  it('avisa al administrador de las respuestas de los instructores en Calendario', async () => {
+    mockedFetch.mockImplementation((url: string) => {
+      if (url.endsWith('/api/calendar/event-notifications')) {
+        return Promise.resolve(jsonResponse({ requests: [], responses: [{ id_aviso: 9 }] }))
+      }
+      throw new Error(`Ruta inesperada en prueba: ${url}`)
+    })
+    renderLayout('ADMIN')
+
+    expect(await screen.findByLabelText('1 aviso de calendario pendiente')).toBeTruthy()
   })
 
   it('muestra al alumno sus datos y las formas que sabe', async () => {
@@ -149,7 +165,7 @@ describe('acceso de prealfa en la web', () => {
     const user = userEvent.setup()
 
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/calendario']}>
         <App />
       </MemoryRouter>,
     )

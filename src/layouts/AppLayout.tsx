@@ -18,25 +18,29 @@ export function AppLayout() {
   const location = useLocation()
   const [pendingConfirmations, setPendingConfirmations] = useState(0)
   const [pendingCancellationNotices, setPendingCancellationNotices] = useState(0)
+  const [pendingEventNotices, setPendingEventNotices] = useState(0)
   const [pendingPromotionNotices, setPendingPromotionNotices] = useState(0)
   const canConfirm = user?.role === 'USER' || user?.role === 'INSTRUCTOR'
+  const userId = user?.userId
 
   useEffect(() => {
-    if (!canConfirm) return
+    if (userId === undefined) return
     const controller = new AbortController()
     let latestRequest = 0
     async function refreshPendingConfirmations() {
       const requestId = ++latestRequest
       try {
-        const [pending, cancellationNotices, promotionNotices] = await Promise.all([
-          apiRequest<{ id: number }[]>('/api/performance/confirmations/pending', { signal: controller.signal }),
-          apiRequest<{ id_aviso: number }[]>('/api/calendar/cancellation-notifications', { signal: controller.signal }),
-          apiRequest<{ id_aviso: string }[]>('/api/me/promotions', { signal: controller.signal }),
+        const [pending, cancellationNotices, promotionNotices, eventNotices] = await Promise.all([
+          canConfirm ? apiRequest<{ id: number }[]>('/api/performance/confirmations/pending', { signal: controller.signal }) : [],
+          canConfirm ? apiRequest<{ id_aviso: number }[]>('/api/calendar/cancellation-notifications', { signal: controller.signal }) : [],
+          canConfirm ? apiRequest<{ id_aviso: string }[]>('/api/me/promotions', { signal: controller.signal }) : [],
+          apiRequest<{ requests: unknown[]; responses: unknown[] }>('/api/calendar/event-notifications', { signal: controller.signal }),
         ])
         if (!controller.signal.aborted && requestId === latestRequest) {
           setPendingConfirmations(pending.length)
           setPendingCancellationNotices(cancellationNotices.length)
           setPendingPromotionNotices(promotionNotices.length)
+          setPendingEventNotices(eventNotices.requests.length + eventNotices.responses.length)
         }
       } catch {
         return
@@ -51,10 +55,11 @@ export function AppLayout() {
       window.clearInterval(interval)
       window.removeEventListener('focus', onFocus)
     }
-  }, [canConfirm, user?.userId, location.key])
+  }, [canConfirm, userId, location.key])
 
   const hasPendingConfirmations = canConfirm && pendingConfirmations > 0
-  const hasPendingCancellationNotices = canConfirm && pendingCancellationNotices > 0
+  const pendingCalendarNotices = (canConfirm ? pendingCancellationNotices : 0) + pendingEventNotices
+  const hasPendingCancellationNotices = pendingCalendarNotices > 0
   const hasPendingPromotionNotices = canConfirm && pendingPromotionNotices > 0
   const items = [
     ...(user?.role === 'ADMIN' ? [navigationItems.home] : []),
@@ -101,8 +106,8 @@ export function AppLayout() {
                 </span>
               ) : null}
               {item === navigationItems.calendar && hasPendingCancellationNotices ? (
-                <span className="ml-auto grid size-7 shrink-0 place-items-center rounded-full bg-red-dark text-xs font-bold text-white" aria-label={`${pendingCancellationNotices} ${pendingCancellationNotices === 1 ? 'aviso de cancelación pendiente' : 'avisos de cancelación pendientes'}`}>
-                  {pendingCancellationNotices > 99 ? '99+' : pendingCancellationNotices}
+                <span className="ml-auto grid size-7 shrink-0 place-items-center rounded-full bg-red-dark text-xs font-bold text-white" aria-label={`${pendingCalendarNotices} ${pendingCalendarNotices === 1 ? 'aviso de calendario pendiente' : 'avisos de calendario pendientes'}`}>
+                  {pendingCalendarNotices > 99 ? '99+' : pendingCalendarNotices}
                 </span>
               ) : null}
               {item === navigationItems.profile && hasPendingPromotionNotices ? (
@@ -133,6 +138,7 @@ export function AppLayout() {
         <Outlet context={{
           onPendingConfirmationsChange: setPendingConfirmations,
           onPendingCancellationNoticesChange: setPendingCancellationNotices,
+          onPendingEventNoticesChange: setPendingEventNotices,
           onPendingPromotionNoticesChange: setPendingPromotionNotices,
         }} />
       </main>

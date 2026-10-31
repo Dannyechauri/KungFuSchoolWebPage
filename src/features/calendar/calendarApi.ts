@@ -31,6 +31,28 @@ export type CancellationNotification = {
   sala_nombre: string | null
 }
 
+export type EventRequest = {
+  id_curso_agendado: EntityId
+  curso_nombre: string
+  fecha_hora: string
+  fecha_hora_fin: string
+  sala_nombre: string | null
+  descripcion: string | null
+  organizador_nombre: string | null
+}
+
+export type EventResponseNotice = {
+  id_aviso: EntityId
+  decision: 'ACEPTADO' | 'RECHAZADO'
+  curso_nombre: string
+  instructor_nombre: string
+  fecha_hora: string
+  fecha_hora_fin: string
+  sala_nombre: string | null
+}
+
+export type EventNotifications = { requests: EventRequest[]; responses: EventResponseNotice[] }
+
 export type CalendarEvent = {
   id_curso_agendado: EntityId
   id_curso: EntityId
@@ -41,6 +63,8 @@ export type CalendarEvent = {
   activo: boolean
   id_horario_recurrente: EntityId | null
   modificado_manualmente: boolean
+  estado_instructor: 'PENDIENTE' | 'ACEPTADO' | 'RECHAZADO'
+  puede_modificar: boolean
   curso_nombre: string
   curso_tema: string
   curso_descripcion: string | null
@@ -87,6 +111,7 @@ export type RecurringRule = {
   activo: boolean
   limite_participantes: number | null
   mostrar_asistentes: boolean
+  puede_modificar: boolean
 }
 
 export type EventPayload = ParticipationSettings & {
@@ -142,6 +167,18 @@ export function getPendingCancellationNotifications() {
 
 export function acknowledgeCancellationNotification(id: EntityId) {
   return apiRequest<{ acknowledged: boolean }>(`/api/calendar/cancellation-notifications/${entityKey(id)}/acknowledge`, { method: 'POST' })
+}
+
+export function getEventNotifications() {
+  return apiRequest<EventNotifications>('/api/calendar/event-notifications')
+}
+
+export function respondToEventRequest(id: EntityId, decision: 'ACEPTADO' | 'RECHAZADO') {
+  return apiRequest(`/api/calendar/event-requests/${entityKey(id)}/respond`, { method: 'POST', body: JSON.stringify({ decision }) })
+}
+
+export function acknowledgeEventResponse(id: EntityId) {
+  return apiRequest<{ acknowledged: boolean }>(`/api/calendar/event-notifications/${entityKey(id)}/acknowledge`, { method: 'POST' })
 }
 
 export function getRecurringRules() {

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -12,6 +12,20 @@ afterEach(() => {
 
 function jsonResponse(body: unknown) {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+}
+
+const noEventNotifications = { requests: [], responses: [] }
+
+function weekEvent(from: string, id: number, name: string, hour: number, canModify: boolean) {
+  const time = (value: number) => `${from}T${String(value).padStart(2, '0')}:00:00`
+  return {
+    id_curso_agendado: id, id_curso: id, id_instructor: 2, id_sala: null,
+    fecha_hora: time(hour), fecha_hora_fin: time(hour + 1), activo: true, id_horario_recurrente: null,
+    modificado_manualmente: false, estado_instructor: 'ACEPTADO', puede_modificar: canModify,
+    curso_nombre: name, curso_tema: 'Técnica', curso_descripcion: null, tipo_curso: 'HABITUAL',
+    instructor_nombre: 'Instructor 2', sala_nombre: null, limite_participantes: null, mostrar_asistentes: false,
+    asistentes: null, completo: false, mi_participacion: null,
+  }
 }
 
 function NavigationState() {
@@ -38,6 +52,7 @@ describe('CalendarPage', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/calendar/rooms') return jsonResponse([])
       if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(noEventNotifications)
       if (url.startsWith('/api/calendar/events?')) {
         const from = new URL(url, 'http://localhost').searchParams.get('from')?.slice(0, 10) ?? '2026-10-26'
         return jsonResponse([2, 3].map((id_instructor, index) => ({
@@ -85,6 +100,7 @@ describe('CalendarPage', () => {
         fecha_hora_fin: '2095-10-16T19:00:00',
         sala_nombre: 'Sala Principal',
       }])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(noEventNotifications)
       if (url === '/api/calendar/cancellation-notifications/12/acknowledge' && init?.method === 'POST') {
         return jsonResponse({ acknowledged: true })
       }
@@ -101,10 +117,99 @@ describe('CalendarPage', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/calendar/cancellation-notifications/12/acknowledge', expect.objectContaining({ method: 'POST' }))
   })
 
+  it.each([['Aceptar', 'ACEPTADO'], ['Rechazar', 'RECHAZADO']] as const)('envía la respuesta «%s» del instructor y retira la solicitud', async (label, decision) => {
+    const notifications = {
+      requests: [{
+        id_curso_agendado: 28, curso_nombre: 'Curso especial', fecha_hora: '2095-10-16T18:00:00',
+        fecha_hora_fin: '2095-10-16T19:00:00', sala_nombre: 'Sala Principal', descripcion: null, organizador_nombre: 'Administración',
+      }],
+      responses: [],
+    }
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/calendar/rooms') return jsonResponse([])
+      if (url.startsWith('/api/calendar/events?')) return jsonResponse([])
+      if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(notifications)
+      if (url === '/api/calendar/event-requests/28/respond' && init?.method === 'POST') {
+        notifications.requests = []
+        return jsonResponse({ id_curso_agendado: 28, decision })
+      }
+      throw new Error(`Ruta inesperada: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    renderCalendar('INSTRUCTOR', 2)
+
+    expect(await screen.findByText('Solicitud como instructor')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: label }))
+
+    await waitFor(() => expect(screen.queryByText('Solicitud como instructor')).toBeNull())
+    expect(fetchMock).toHaveBeenCalledWith('/api/calendar/event-requests/28/respond', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    }))
+  })
+
+  it('muestra al organizador la respuesta del instructor hasta que la confirma', async () => {
+    const notifications = {
+      requests: [],
+      responses: [{
+        id_aviso: 5, decision: 'RECHAZADO', curso_nombre: 'Curso especial', instructor_nombre: 'Chen Wei',
+        fecha_hora: '2095-10-16T18:00:00', fecha_hora_fin: '2095-10-16T19:00:00', sala_nombre: null,
+      }],
+    }
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/calendar/rooms') return jsonResponse([])
+      if (url.startsWith('/api/calendar/events?')) return jsonResponse([])
+      if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(notifications)
+      if (url === '/api/calendar/event-notifications/5/acknowledge' && init?.method === 'POST') {
+        notifications.responses = []
+        return jsonResponse({ acknowledged: true })
+      }
+      throw new Error(`Ruta inesperada: ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    renderCalendar('ADMIN')
+
+    expect(await screen.findByText('Actividad rechazada')).toBeTruthy()
+    expect(screen.getByText(/Chen Wei ha rechazado la actividad y se ha eliminado/u)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Confirmar que lo vi' }))
+
+    await waitFor(() => expect(screen.queryByText('Actividad rechazada')).toBeNull())
+    expect(fetchMock).toHaveBeenCalledWith('/api/calendar/event-notifications/5/acknowledge', expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('solo ofrece editar las sesiones que el usuario puede modificar', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url === '/api/calendar/rooms') return jsonResponse([])
+      if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(noEventNotifications)
+      if (/\/api\/calendar\/events\/\d+\/participants$/u.test(url)) return jsonResponse([])
+      if (url.startsWith('/api/calendar/events?')) {
+        const from = new URL(url, 'http://localhost').searchParams.get('from')?.slice(0, 10) ?? '2026-10-26'
+        return jsonResponse([weekEvent(from, 1, 'Clase propia', 18, true), weekEvent(from, 2, 'Clase ajena', 20, false)])
+      }
+      throw new Error(`Ruta inesperada: ${url}`)
+    }))
+    const user = userEvent.setup()
+    renderCalendar('INSTRUCTOR', 2)
+
+    await user.click(await screen.findByRole('button', { name: /Clase propia/u }, { timeout: 3000 }))
+    expect(screen.getByRole('button', { name: 'Editar sesión' })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }))
+
+    await user.click(screen.getByRole('button', { name: /Clase ajena/u }))
+    expect(await screen.findByRole('dialog')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Editar sesión' })).toBeNull()
+  })
+
   it('abre la creación al hacer clic en un hueco libre y conserva día y hora', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/calendar/rooms') return jsonResponse([{ id_sala: 3, nombre: 'Sala Multiusos', activo: true }])
       if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(noEventNotifications)
       if (url.startsWith('/api/calendar/events?')) return jsonResponse([])
       throw new Error(`Ruta inesperada: ${url}`)
     }))
@@ -122,6 +227,7 @@ describe('CalendarPage', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       if (url === '/api/calendar/rooms') return jsonResponse([{ id_sala: 3, nombre: 'Sala Multiusos', activo: true }])
       if (url === '/api/calendar/cancellation-notifications') return jsonResponse([])
+      if (url === '/api/calendar/event-notifications') return jsonResponse(noEventNotifications)
       if (url.startsWith('/api/calendar/events?')) return jsonResponse([])
       throw new Error(`Ruta inesperada: ${url}`)
     }))

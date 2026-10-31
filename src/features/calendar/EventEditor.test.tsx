@@ -19,6 +19,8 @@ const event: CalendarEvent = {
   activo: true,
   id_horario_recurrente: 7,
   modificado_manualmente: false,
+  estado_instructor: 'ACEPTADO',
+  puede_modificar: true,
   curso_nombre: 'Wushu infantil',
   curso_tema: 'Base',
   curso_descripcion: null,
@@ -49,6 +51,7 @@ const rule: RecurringRule = {
   activo: true,
   limite_participantes: 10,
   mostrar_asistentes: true,
+  puede_modificar: true,
 }
 
 function mockApi() {

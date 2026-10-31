@@ -8,12 +8,18 @@ import { canManageCalendar, canManageSchoolData, hasOwnProfile } from '../auth/p
 import {
   entityKey,
   acknowledgeCancellationNotification,
+  acknowledgeEventResponse,
   getCalendarEvents,
+  getEventNotifications,
   getPendingCancellationNotifications,
   getCalendarRooms,
+  respondToEventRequest,
   type CalendarEvent,
   type CalendarRoom,
   type CancellationNotification,
+  type EventNotifications,
+  type EventRequest,
+  type EventResponseNotice,
 } from './calendarApi'
 import { calendarErrorMessage } from './calendarErrors'
 import { EventEditor, type EventEditScope } from './EventEditor'
@@ -183,6 +189,7 @@ function CalendarEventCard({ event, instructorId, onSelect, compact = false, sho
           </span>
         ) : null}
         {!event.activo ? <span className="mt-1 block text-[0.68rem] font-bold uppercase tracking-wide">Cancelada</span> : null}
+        {event.activo && event.estado_instructor === 'PENDIENTE' ? <span className="mt-1 block text-[0.68rem] font-bold uppercase tracking-wide">Pendiente del instructor</span> : null}
       </button>
       {tooltip && showTooltip ? createPortal(
         <div
@@ -310,7 +317,12 @@ function WeekSchedule({ events, weekKeys, instructorId, onSelectDay, onSelectEve
 
 export function CalendarPage() {
   const { user } = useAuth()
-  const onPendingCancellationNoticesChange = useOutletContext<{ onPendingCancellationNoticesChange: (count: number) => void } | undefined>()?.onPendingCancellationNoticesChange
+  const noticeCallbacks = useOutletContext<{
+    onPendingCancellationNoticesChange?: (count: number) => void
+    onPendingEventNoticesChange?: (count: number) => void
+  } | undefined>()
+  const onPendingCancellationNoticesChange = noticeCallbacks?.onPendingCancellationNoticesChange
+  const onPendingEventNoticesChange = noticeCallbacks?.onPendingEventNoticesChange
   const canManage = canManageCalendar(user?.role)
   const canParticipate = hasOwnProfile(user?.role)
   const canEditParticipation = canManageSchoolData(user?.role)
@@ -350,9 +362,11 @@ export function CalendarPage() {
   const [rooms, setRooms] = useState<CalendarRoom[]>([])
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [cancellationNotifications, setCancellationNotifications] = useState<CancellationNotification[]>([])
+  const [eventNotifications, setEventNotifications] = useState<EventNotifications>({ requests: [], responses: [] })
   const [notificationOwnerId, setNotificationOwnerId] = useState<number | null>(null)
   const [notificationError, setNotificationError] = useState<string | null>(null)
   const [acknowledgingNoticeId, setAcknowledgingNoticeId] = useState<string | null>(null)
+  const [busyEventNoticeId, setBusyEventNoticeId] = useState<string | null>(null)
   const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null)
   const [loadedEventsKey, setLoadedEventsKey] = useState<string | null>(null)
   const [metadataError, setMetadataError] = useState<string | null>(null)
@@ -360,17 +374,25 @@ export function CalendarPage() {
   const [metadataVersion, setMetadataVersion] = useState(0)
   const [eventsVersion, setEventsVersion] = useState(0)
 
+  const studentId = user?.studentId
+  const signedInUserId = user?.userId
+
   useEffect(() => {
-    const ownerId = user?.studentId
-    if (typeof ownerId !== 'number') return
+    if (signedInUserId === undefined) return
+    const ownerId = typeof studentId === 'number' ? studentId : null
     let active = true
     async function refreshNotifications() {
       try {
-        const notices = await getPendingCancellationNotifications()
+        const [notices, eventNotices] = await Promise.all([
+          ownerId === null ? Promise.resolve([] as CancellationNotification[]) : getPendingCancellationNotifications(),
+          getEventNotifications(),
+        ])
         if (active) {
           setCancellationNotifications(notices)
-          setNotificationOwnerId(ownerId ?? null)
+          setEventNotifications(eventNotices)
+          setNotificationOwnerId(ownerId)
           onPendingCancellationNoticesChange?.(notices.length)
+          onPendingEventNoticesChange?.(eventNotices.requests.length + eventNotices.responses.length)
           setNotificationError(null)
         }
       } catch (error: unknown) {
@@ -385,7 +407,7 @@ export function CalendarPage() {
       window.clearInterval(interval)
       window.removeEventListener('focus', refreshNotifications)
     }
-  }, [onPendingCancellationNoticesChange, user?.studentId])
+  }, [onPendingCancellationNoticesChange, onPendingEventNoticesChange, studentId, signedInUserId])
 
   const today = madridNowParts()
   const weekKeys = useMemo(() => weekDateKeys(weekDate), [weekDate])
@@ -489,6 +511,41 @@ export function CalendarPage() {
     return <section className="w-full text-muted">Cargando agenda y salas…</section>
   }
 
+  async function answerRequest(request: EventRequest, decision: 'ACEPTADO' | 'RECHAZADO') {
+    const requestId = entityKey(request.id_curso_agendado)
+    setBusyEventNoticeId(requestId)
+    try {
+      await respondToEventRequest(request.id_curso_agendado, decision)
+      const requests = eventNotifications.requests.filter((item) => entityKey(item.id_curso_agendado) !== requestId)
+      setEventNotifications({ ...eventNotifications, requests })
+      onPendingEventNoticesChange?.(requests.length + eventNotifications.responses.length)
+      setEventsVersion((version) => version + 1)
+      setNotificationError(null)
+    } catch (error: unknown) {
+      setNotificationError(calendarErrorMessage(error))
+    } finally {
+      setBusyEventNoticeId(null)
+    }
+  }
+
+  async function confirmEventResponse(notice: EventResponseNotice) {
+    const noticeId = entityKey(notice.id_aviso)
+    setBusyEventNoticeId(`response-${noticeId}`)
+    try {
+      await acknowledgeEventResponse(notice.id_aviso)
+      const responses = eventNotifications.responses.filter((item) => entityKey(item.id_aviso) !== noticeId)
+      setEventNotifications({ ...eventNotifications, responses })
+      onPendingEventNoticesChange?.(eventNotifications.requests.length + responses.length)
+      setNotificationError(null)
+    } catch (error: unknown) {
+      setNotificationError(calendarErrorMessage(error))
+    } finally {
+      setBusyEventNoticeId(null)
+    }
+  }
+
+  const noticesAreCurrent = notificationOwnerId === (user?.studentId ?? null)
+
   return (
     <section className="w-full">
       <p className="mb-2 text-xs font-black tracking-[0.12em] text-red uppercase">Calendario</p>
@@ -517,6 +574,54 @@ export function CalendarPage() {
               </button>
             </PanelCard>
           ))}
+        </section>
+      ) : null}
+
+      {noticesAreCurrent && eventNotifications.requests.length ? (
+        <section className="mt-5 grid gap-3" aria-label="Solicitudes de instructor">
+          {eventNotifications.requests.map((request) => {
+            const requestId = entityKey(request.id_curso_agendado)
+            return (
+              <PanelCard key={`request-${requestId}`} className="flex flex-col gap-3 border-l-4 border-gold p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="m-0 text-xs font-black uppercase tracking-wide text-red-dark">Solicitud como instructor</p>
+                  <p className="mt-1 mb-0 font-bold text-ink">{request.curso_nombre}</p>
+                  <p className="mt-1 mb-0 text-sm text-muted">
+                    {formatCalendarDate(request.fecha_hora.slice(0, 10), { weekday: 'long', day: 'numeric', month: 'long' })} · {formatTime(request.fecha_hora)}–{formatTime(request.fecha_hora_fin)} · {request.sala_nombre ?? 'Sala sin asignar'}
+                  </p>
+                  <p className="mt-1 mb-0 text-sm text-muted">{request.organizador_nombre ?? 'La administración'} te ha asignado esta actividad. Los alumnos no la verán hasta que la aceptes; si la rechazas, se eliminará y se avisará a quien la creó.</p>
+                  {request.descripcion ? <p className="mt-2 mb-0 whitespace-pre-wrap text-sm text-ink">{request.descripcion}</p> : null}
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <button className={`${buttonClass} bg-green-800 text-white disabled:opacity-60`} type="button" disabled={busyEventNoticeId !== null} onClick={() => void answerRequest(request, 'ACEPTADO')}>Aceptar</button>
+                  <button className={`${buttonClass} border border-red text-red-dark disabled:opacity-60`} type="button" disabled={busyEventNoticeId !== null} onClick={() => void answerRequest(request, 'RECHAZADO')}>Rechazar</button>
+                </div>
+              </PanelCard>
+            )
+          })}
+        </section>
+      ) : null}
+
+      {noticesAreCurrent && eventNotifications.responses.length ? (
+        <section className="mt-5 grid gap-3" aria-label="Respuestas de instructores">
+          {eventNotifications.responses.map((notice) => {
+            const accepted = notice.decision === 'ACEPTADO'
+            return (
+              <PanelCard key={`response-${entityKey(notice.id_aviso)}`} className={`flex flex-col gap-3 border-l-4 p-4 sm:flex-row sm:items-center sm:justify-between ${accepted ? 'border-green-800' : 'border-red'}`}>
+                <div>
+                  <p className="m-0 text-xs font-black uppercase tracking-wide text-red-dark">{accepted ? 'Actividad aceptada' : 'Actividad rechazada'}</p>
+                  <p className="mt-1 mb-0 font-bold text-ink">{notice.curso_nombre}</p>
+                  <p className="mt-1 mb-0 text-sm text-muted">
+                    {formatCalendarDate(notice.fecha_hora.slice(0, 10), { weekday: 'long', day: 'numeric', month: 'long' })} · {formatTime(notice.fecha_hora)}–{formatTime(notice.fecha_hora_fin)} · {notice.sala_nombre ?? 'Sala sin asignar'}
+                  </p>
+                  <p className="mt-1 mb-0 text-sm text-muted">{accepted ? `${notice.instructor_nombre} ha aceptado la actividad y ya es visible para los alumnos.` : `${notice.instructor_nombre} ha rechazado la actividad y se ha eliminado.`}</p>
+                </div>
+                <button className={`${buttonClass} shrink-0 border border-line bg-white text-muted disabled:opacity-60`} type="button" disabled={busyEventNoticeId !== null} onClick={() => void confirmEventResponse(notice)}>
+                  {busyEventNoticeId === `response-${entityKey(notice.id_aviso)}` ? 'Confirmando…' : 'Confirmar que lo vi'}
+                </button>
+              </PanelCard>
+            )
+          })}
         </section>
       ) : null}
 
@@ -686,7 +791,7 @@ export function CalendarPage() {
                   <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Instructor</dt><dd className="mt-1 font-semibold text-ink">{shownEvent.instructor_nombre}</dd></div>
                   <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Sala</dt><dd className="mt-1 font-semibold text-ink">{eventRoom(shownEvent)}</dd></div>
                   <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Tipo</dt><dd className="mt-1 font-semibold text-ink">{shownEvent.tipo_curso === 'HABITUAL' ? 'Clase habitual' : 'Curso especial'}</dd></div>
-                  <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Estado</dt><dd className="mt-1 font-semibold text-ink">{shownEvent.activo ? 'Activa' : 'Cancelada'}</dd></div>
+                  <div><dt className="text-xs font-bold uppercase tracking-wide text-muted">Estado</dt><dd className="mt-1 font-semibold text-ink">{!shownEvent.activo ? 'Cancelada' : shownEvent.estado_instructor === 'PENDIENTE' ? 'Pendiente de que el instructor la acepte' : 'Activa'}</dd></div>
                   {shownEvent.id_horario_recurrente ? <div className="sm:col-span-2"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Origen</dt><dd className="mt-1 font-semibold text-ink">{shownEvent.modificado_manualmente ? 'Ocurrencia de horario habitual, modificada individualmente' : 'Ocurrencia de horario habitual'}</dd></div> : null}
                 </dl>
                 <EventParticipation
@@ -702,8 +807,8 @@ export function CalendarPage() {
               )}
               {editScope ? null : (
               <div className="mt-5 flex flex-wrap gap-3 border-t border-line pt-4">
-                {canManage && shownEvent.activo ? <button className={`${buttonClass} bg-red text-white`} type="button" onClick={() => { setEventNotice(null); setEditing({ eventKey: shownEventKey, scope: 'event' }) }}>{shownEvent.id_horario_recurrente ? 'Editar esta sesión' : 'Editar sesión'}</button> : null}
-                {canManage && shownEvent.activo && shownEvent.id_horario_recurrente ? <button className={`${buttonClass} border border-red text-red-dark`} type="button" onClick={() => { setEventNotice(null); setEditing({ eventKey: shownEventKey, scope: 'rule' }) }}>Editar horario habitual</button> : null}
+                {canManage && shownEvent.puede_modificar && shownEvent.activo ? <button className={`${buttonClass} bg-red text-white`} type="button" onClick={() => { setEventNotice(null); setEditing({ eventKey: shownEventKey, scope: 'event' }) }}>{shownEvent.id_horario_recurrente ? 'Editar esta sesión' : 'Editar sesión'}</button> : null}
+                {canManage && shownEvent.puede_modificar && shownEvent.activo && shownEvent.id_horario_recurrente ? <button className={`${buttonClass} border border-red text-red-dark`} type="button" onClick={() => { setEventNotice(null); setEditing({ eventKey: shownEventKey, scope: 'rule' }) }}>Editar horario habitual</button> : null}
                 <button className={`${buttonClass} border border-line text-muted`} type="button" onClick={closeEvent}>Cerrar</button>
               </div>
               )}
