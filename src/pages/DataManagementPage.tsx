@@ -879,6 +879,14 @@ export function DataManagementPage() {
                       const label = column.name === 'es_instructor' ? 'También es instructor (con acceso de instructor)' : fieldLabel(column)
                       return <label key={column.name} className="flex items-center gap-3 text-sm font-bold text-muted"><input name={column.name} type="checkbox" defaultChecked={defaultChecked} />{label}</label>
                     }
+                    if (column.name === 'descripcion' && ['formas', 'estilos'].includes(table)) {
+                      return (
+                        <label key={column.name} className="grid gap-2 text-sm font-bold text-muted md:col-span-2 xl:col-span-3">
+                          {fieldLabel(column)}
+                          <textarea className={`${inputClass} min-h-36 resize-y py-3`} name={column.name} defaultValue={value} rows={6} maxLength={255} />
+                        </label>
+                      )
+                    }
                     const isPassword = column.name === 'password_hash'
                     const inputType = isPassword ? 'password' : column.dataType === 'date' ? 'date' : column.dataType.includes('timestamp') ? 'datetime-local' : isNumber(column) ? 'number' : 'text'
                     const required = isPassword ? isCreating && table === 'administradores' : !column.nullable
