@@ -100,4 +100,33 @@ describe('ProfilePage', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(fetchMock).toHaveBeenCalledWith('/api/me/promotions/19/acknowledge', expect.objectContaining({ method: 'POST' }))
   })
+
+  it('abre la ventana de logros con las medallas de los rankings mensuales', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/api/me/birthdays/today') || url.endsWith('/api/me/promotions')) return new Response(JSON.stringify([]), { status: 200 })
+      if (url.endsWith('/api/me/achievements')) {
+        return new Response(JSON.stringify([
+          { month: '2026-10', category: 'overall', medal: 'GOLD', points: 12 },
+          { month: '2026-10', category: 'cardio', medal: 'BRONZE', points: 4 },
+          { month: '2026-09', category: 'forms', medal: 'SILVER', points: 1 },
+        ]), { status: 200 })
+      }
+      return new Response(JSON.stringify(profile(null)), { status: 200 })
+    }))
+    const user = userEvent.setup()
+    render(<ProfilePage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Logros' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Logros' })
+    expect(await screen.findByText('octubre de 2026')).toBeTruthy()
+    expect(screen.getByText('septiembre de 2026')).toBeTruthy()
+    expect(screen.getByText('Absoluto')).toBeTruthy()
+    expect(screen.getByLabelText('Oro: 1')).toBeTruthy()
+    expect(screen.getByLabelText('Plata: 1')).toBeTruthy()
+    expect(screen.getByLabelText('Bronce: 1')).toBeTruthy()
+    expect(dialog).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: 'Cerrar' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
 })

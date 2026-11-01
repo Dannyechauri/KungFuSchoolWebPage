@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useOutletContext } from 'react-router'
 import { apiRequest } from '../api/client'
 import { BirthdayPanel } from '../components/BirthdayPanel'
@@ -42,7 +42,37 @@ type PromotionNotification = {
   grado_nuevo: string
 }
 
+type Medal = 'GOLD' | 'SILVER' | 'BRONZE'
+
+type Achievement = {
+  month: string
+  category: 'overall' | 'attendance' | 'stretching' | 'strength' | 'cardio' | 'forms'
+  medal: Medal
+  points: number
+}
+
+const categoryLabels: Record<Achievement['category'], string> = {
+  overall: 'Absoluto',
+  attendance: 'Asistencia',
+  stretching: 'Estiramiento',
+  strength: 'Entrenamiento de fuerza',
+  cardio: 'Cardio',
+  forms: 'Cantidad de formas',
+}
+
+const medals: { key: Medal; label: string; className: string }[] = [
+  { key: 'GOLD', label: 'Oro', className: 'bg-[#e0a800] text-ink' },
+  { key: 'SILVER', label: 'Plata', className: 'bg-[#aeb4bb] text-ink' },
+  { key: 'BRONZE', label: 'Bronce', className: 'bg-[#b8743a] text-white' },
+]
+
 const dateFormatter = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })
+const monthFormatter = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' })
+
+function formatMonth(value: string) {
+  const [year, month] = value.split('-').map(Number)
+  return monthFormatter.format(new Date(year!, month! - 1, 1))
+}
 
 function formatDate(value: string | null) {
   if (!value) return 'Sin indicar'
@@ -154,6 +184,87 @@ function StyleFormGroup({ style, forms, onChanged }: { style: string; forms: Pro
   )
 }
 
+function MedalBadge({ medal }: { medal: Medal }) {
+  const { label, className } = medals.find((item) => item.key === medal)!
+  return <span className={`inline-block min-w-16 rounded-full px-3 py-1 text-center text-xs font-black uppercase tracking-[0.06em] ${className}`}>{label}</span>
+}
+
+function AchievementsDialog({ onClose }: { onClose: () => void }) {
+  const [achievements, setAchievements] = useState<Achievement[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    apiRequest<Achievement[]>('/api/me/achievements')
+      .then((loaded) => { if (active) setAchievements(loaded) })
+      .catch((requestError: unknown) => { if (active) setError(requestError instanceof Error ? requestError.message : 'No se pudieron cargar tus logros.') })
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [onClose])
+
+  const months = useMemo(() => {
+    const groups = new Map<string, Achievement[]>()
+    for (const achievement of achievements ?? []) groups.set(achievement.month, [...(groups.get(achievement.month) ?? []), achievement])
+    return [...groups.entries()]
+  }, [achievements])
+
+  return (
+    <div className="fixed inset-0 z-[90] grid place-items-center bg-ink/75 p-4" role="presentation" onClick={onClose}>
+      <div className="w-full max-w-2xl" role="dialog" aria-modal="true" aria-labelledby="achievements-title" onClick={(event) => event.stopPropagation()}>
+        <PanelCard className="max-h-[85vh] overflow-y-auto border-t-4 border-gold p-6 shadow-2xl md:p-8">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="m-0 text-xs font-black uppercase tracking-[0.12em] text-red-dark">Ranking mensual</p>
+              <h2 id="achievements-title" className="mt-2 text-3xl font-bold text-ink">Logros</h2>
+            </div>
+            <button className="rounded-soft border border-line px-3 py-1.5 text-sm font-bold text-ink" type="button" autoFocus onClick={onClose}>Cerrar</button>
+          </div>
+
+          {error ? <p className="mt-5 text-sm font-bold text-red-dark" role="alert">{error}</p> : null}
+          {!error && !achievements ? <p className="mt-5 text-muted">Cargando tus logros…</p> : null}
+          {achievements ? (
+            <>
+              <dl className="mt-5 grid grid-cols-3 gap-3">
+                {medals.map(({ key, label }) => (
+                  <div key={key} className="rounded-soft border border-line p-3 text-center">
+                    <dt className="text-xs font-black uppercase tracking-[0.08em] text-muted">{label}</dt>
+                    <dd className="m-0 mt-1 text-3xl font-bold text-ink" aria-label={`${label}: ${achievements.filter((item) => item.medal === key).length}`}>
+                      {achievements.filter((item) => item.medal === key).length}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              {months.length === 0 ? (
+                <p className="mt-5 text-sm text-muted">Todavía no tienes medallas. Se otorgan al terminar cada mes a quienes logran más puntos en cada categoría.</p>
+              ) : months.map(([month, items]) => (
+                <section key={month} className="mt-6">
+                  <h3 className="m-0 text-sm font-black uppercase tracking-[0.08em] text-red-dark">{formatMonth(month)}</h3>
+                  <ul className="mt-1 grid divide-y divide-line">
+                    {items.map((item) => (
+                      <li key={item.category} className="flex items-center justify-between gap-3 py-3">
+                        <div>
+                          <strong className="block text-base text-ink">{categoryLabels[item.category]}</strong>
+                          <span className="text-sm text-muted">{item.points} {item.points === 1 ? 'punto' : 'puntos'}</span>
+                        </div>
+                        <MedalBadge medal={item.medal} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </>
+          ) : null}
+        </PanelCard>
+      </div>
+    </div>
+  )
+}
+
 export function ProfilePage() {
   const onPromotionNotificationsChange = useOutletContext<{ onPendingPromotionNoticesChange: (count: number) => void } | undefined>()?.onPendingPromotionNoticesChange
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -163,6 +274,8 @@ export function ProfilePage() {
   const [promotionNotifications, setPromotionNotifications] = useState<PromotionNotification[]>([])
   const [promotionError, setPromotionError] = useState<string | null>(null)
   const [acknowledgingPromotionId, setAcknowledgingPromotionId] = useState<string | null>(null)
+  const [achievementsOpen, setAchievementsOpen] = useState(false)
+  const closeAchievements = useCallback(() => setAchievementsOpen(false), [])
   const handleFormChanged = (message: string) => { setNotice(message); setReloadKey((key) => key + 1) }
 
   useEffect(() => {
@@ -261,8 +374,12 @@ export function ProfilePage() {
           </div>
         </div>
       ) : null}
+      {achievementsOpen ? <AchievementsDialog onClose={closeAchievements} /> : null}
       <p className="mb-2 text-xs font-black tracking-[0.12em] text-red uppercase">Mi ficha</p>
-      <h1 className="m-0 text-4xl font-bold tracking-tight text-ink md:text-5xl">{student.name}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="m-0 text-4xl font-bold tracking-tight text-ink md:text-5xl">{student.name}</h1>
+        <button className="min-h-11 rounded-full bg-gold px-5 text-sm font-bold text-ink hover:brightness-95" type="button" onClick={() => setAchievementsOpen(true)}>Logros</button>
+      </div>
       <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
         {student.isInstructor ? 'Alumno e instructor de la escuela.' : 'Alumno de la escuela.'} Si algún dato no es correcto, avisa a la administración.
       </p>
