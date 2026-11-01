@@ -829,6 +829,7 @@ export function CalendarPage() {
                   event={shownEvent}
                   canParticipate={canParticipate}
                   canChooseInstructorRole={user?.role === 'INSTRUCTOR'}
+                  isTitular={isCurrentInstructor(shownEvent, user?.instructorId)}
                   canSeeParticipants={canManage}
                   hasStarted={shownEvent.fecha_hora <= today.dateTime}
                   onChanged={() => setEventsVersion((version) => version + 1)}

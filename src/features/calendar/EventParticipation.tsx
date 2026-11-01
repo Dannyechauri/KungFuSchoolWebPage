@@ -18,6 +18,8 @@ type Props = {
   event: CalendarEvent
   canParticipate: boolean
   canChooseInstructorRole: boolean
+  /** La cuenta actual es la del instructor titular: ya participa, no puede apuntarse. */
+  isTitular?: boolean
   canSeeParticipants: boolean
   hasStarted: boolean
   onChanged: () => void
@@ -40,7 +42,7 @@ function attendanceSummary(event: CalendarEvent) {
   return `${students} · ${instructors}${limit}`
 }
 
-export function EventParticipation({ event, canParticipate, canChooseInstructorRole, canSeeParticipants, hasStarted, onChanged }: Props) {
+export function EventParticipation({ event, canParticipate, canChooseInstructorRole, isTitular = false, canSeeParticipants, hasStarted, onChanged }: Props) {
   const recurring = event.id_horario_recurrente !== null
   const [scope, setScope] = useState<ParticipationScope>('occurrence')
   const [role, setRole] = useState<ParticipationRole>('ALUMNO')
@@ -133,7 +135,7 @@ export function EventParticipation({ event, canParticipate, canChooseInstructorR
               <label className="flex items-center gap-2 text-sm"><input type="radio" name="participation-scope" checked={scope === 'series'} onChange={() => setScope('series')} />Toda la serie</label>
             </fieldset>
           ) : null}
-          {canChooseInstructorRole ? (
+          {canChooseInstructorRole && !isTitular ? (
             <fieldset className="m-0 flex flex-wrap gap-4 border-0 p-0">
               <legend className="mb-1 text-xs font-bold text-muted">Participar como</legend>
               <label className="flex items-center gap-2 text-sm"><input type="radio" name="participation-role" checked={role === 'ALUMNO'} onChange={() => setRole('ALUMNO')} />Alumno</label>
@@ -141,10 +143,11 @@ export function EventParticipation({ event, canParticipate, canChooseInstructorR
             </fieldset>
           ) : null}
           <div>
-            <button className={`${buttonClass} bg-red text-white`} type="button" disabled={busy || seatBlocked} onClick={() => void join()}>
+            <button className={`${buttonClass} bg-red text-white`} type="button" disabled={busy || seatBlocked || isTitular} onClick={() => void join()}>
               Apuntarme
             </button>
           </div>
+          {isTitular ? <p className="m-0 text-xs text-muted">Eres el instructor titular de esta actividad, así que ya participas en ella.</p> : null}
           {seatBlocked ? <p className="m-0 text-xs text-muted">No quedan plazas de alumno en este día.</p> : null}
         </div>
       ) : null}
